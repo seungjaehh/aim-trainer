@@ -101,7 +101,7 @@
     if (s) {
       const img = new Image();
       img.src = s.icon;
-      A.weapon = { feedImg: img, title: w.name + ' · ' + s.name, img, rate: w.stats && w.stats.rate, reload: w.stats && w.stats.reload };
+      A.weapon = { feedImg: img, title: w.name + ' · ' + s.name, img, muzzle: s.muzzle, rate: w.stats && w.stats.rate, reload: w.stats && w.stats.reload };
       A.skins.loadImage(s.id).then((own) => {
         if (own && A.weapon && A.weapon.feedImg === img) { A.weapon.img = own; A.weapon.fp = true; }
         if (cfg.skin === s.id) $('skinImgClear').hidden = !own || own.builtIn;

@@ -424,8 +424,8 @@
         ctx.stroke();
       }
       this.drawPops(ctx);
-      this.drawTracers(ctx);
       this.drawWeapon(ctx);
+      this.drawTracers(ctx);
       this.drawFeed(ctx);
       this.drawOrientation(ctx);
     }
@@ -451,7 +451,8 @@
         const dip = this.reloading > 0 && w.reload ? Math.sin(Math.PI * (1 - this.reloading / w.reload)) : 0;
         const ox = W - tw + 20 * k - this.kick * 26 * k, oy = H - th + 30 * k + this.kick * 22 * k + dip * 260 * k;
         ctx.drawImage(img, ox, oy, tw, th);
-        this.muzzle = { x: ox + tw * 0.17, y: oy + th * 0.1 };  // 이미지 윗쪽 앞 끝 근처
+        const muzzle = w.muzzle || { x: 0.17, y: 0.1 };
+        this.muzzle = { x: ox + tw * muzzle.x, y: oy + th * muzzle.y };
       } else if (img) {
         const tw = Math.min(W * 0.34, 640 * k), th = tw * img.naturalHeight / img.naturalWidth;
         const dip = this.reloading > 0 && w.reload ? Math.sin(Math.PI * (1 - this.reloading / w.reload)) : 0;
@@ -506,11 +507,13 @@
       for (const m of this.tracers) {
         const p = 1 - m.t / m.life, head = Math.min(1, p * 1.25), tail = Math.max(0, head - 0.3);
         if (tail >= 1) continue;
-        const dx = m.x2 - m.x1, dy = m.y2 - m.y1;
-        const ax = m.x1 + dx * tail, ay = m.y1 + dy * tail, bx = m.x1 + dx * head, by = m.y1 + dy * head;
+        // 반동 중인 현재 총구와 맞춰, 위쪽 가늠쇠가 아닌 실제 총열 구멍에서 시작한다.
+        const origin = this.muzzle || { x: m.x1, y: m.y1 };
+        const dx = m.x2 - origin.x, dy = m.y2 - origin.y;
+        const ax = origin.x + dx * tail, ay = origin.y + dy * tail, bx = origin.x + dx * head, by = origin.y + dy * head;
         const g = ctx.createLinearGradient(ax, ay, bx, by);
-        g.addColorStop(0, 'rgba(255,200,60,0)'); g.addColorStop(1, 'rgba(255,245,190,' + (0.95 * (1 - p * 0.6)) + ')');
-        ctx.strokeStyle = g; ctx.lineWidth = Math.max(1.5, 3.2 * k * (1 - p * 0.5));
+        g.addColorStop(0, 'rgba(255,200,60,0.22)'); g.addColorStop(1, 'rgba(255,245,190,' + (0.95 * (1 - p * 0.6)) + ')');
+        ctx.strokeStyle = g; ctx.lineWidth = Math.max(2, 4.8 * k * (1 - p * 0.5));
         ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
       }
       ctx.restore();

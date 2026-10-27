@@ -26,6 +26,7 @@
           if (!s) return null;
           return {
             id: s.uuid, name: s.displayName, sound, themeId: s.themeUuid, theme: themes[s.themeUuid] || '',
+            muzzle: s.uuid === '9bf19b77-4b33-7203-9f2c-16932970622f' ? { x: 0.133, y: 0.178 } : { x: 0.17, y: 0.1 },
             icon: s.displayIcon || (s.chromas && s.chromas[0] && (s.chromas[0].fullRender || s.chromas[0].displayIcon)) || '',
           };
         }).filter((s) => s && s.icon),
