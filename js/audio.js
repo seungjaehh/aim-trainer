@@ -1,7 +1,7 @@
 /* 킬·타격 사운드. 파일 없이 WebAudio 로 합성하고, 내 소리 파일을 올려 쓸 수도 있다.
    '스킨 맞춤' 은 고른 스킨의 시리즈(프라임·리버·오니…)마다 어울리는 소리를 합성해 낸다. */
 (function (A) {
-  let ctx = null, custom = null, skin = null;
+  let ctx = null, custom = null, skin = null, skinBuf = null;
   const audio = () => (ctx = ctx || new (window.AudioContext || window.webkitAudioContext)());
 
   function tone(freq, start, dur, opts) {
@@ -102,8 +102,42 @@
     src.start();
     return true;
   }
+  /* 스킨별로 내가 올린 킬사운드. 이 브라우저(IndexedDB)에만 저장되고 어디로도 올라가지 않는다 */
+  const idb = () => new Promise((ok, no) => {
+    const r = indexedDB.open('aimtrainer.skinsound', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('s');
+    r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+  });
+  const idbDo = (mode, fn) => idb().then((db) => new Promise((ok, no) => {
+    const q = fn(db.transaction('s', mode).objectStore('s'));
+    q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error);
+  }));
+  function playBuf(buf, gain) {
+    const c = audio(), src = c.createBufferSource(), g = c.createGain();
+    src.buffer = buf;
+    g.gain.value = A.cfg.volume * (gain || 1);
+    src.connect(g).connect(c.destination);
+    src.start();
+  }
   A.audio = {
     lists: LISTS,
+    async loadSkinSound(id) {
+      skinBuf = null;
+      if (!id) return false;
+      try {
+        const data = await idbDo('readonly', (s) => s.get(id));
+        if (data) skinBuf = await audio().decodeAudioData(data.slice(0));
+      } catch (e) { /* 저장소를 못 써도 합성음으로 동작 */ }
+      return !!skinBuf;
+    },
+    async saveSkinSound(id, file) {
+      const data = await file.arrayBuffer();
+      const buf = await audio().decodeAudioData(data.slice(0));  // 재생 못 하는 파일이면 여기서 던진다
+      await idbDo('readwrite', (s) => s.put(data, id));
+      skinBuf = buf;
+    },
+    async clearSkinSound(id) { skinBuf = null; try { await idbDo('readwrite', (s) => s.delete(id)); } catch (e) { /* 없으면 그만 */ } },
+    hasSkinSound() { return !!skinBuf; },
     setSkin(s) { skin = s || null; },
     profile() { return profileFor(skin); },
     kill(hs) {
@@ -111,6 +145,7 @@
       if (k === 'none') return;
       if (k === 'custom') { if (!playCustom()) KILL.valo(hs); return; }
       if (k === 'skin') {
+        if (skinBuf) { playBuf(skinBuf); return; }
         const p = profileFor(skin);
         if (!p) { KILL.valo(hs); return; }
         SKIN[p](hs ? 1.25 : 1);

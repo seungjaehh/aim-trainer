@@ -104,6 +104,10 @@
     $('hudWeapon').hidden = true;
     const w = s && A.skins.weapon(cfg.weapon);
     A.audio.setSkin(s || null);
+    A.audio.loadSkinSound(s && s.id).then((has) => {
+      $('skinSoundClear').hidden = !has;
+      $('skinSoundMsg').textContent = !s ? '' : has ? '올린 소리를 쓰는 중이에요 (이 브라우저에만 저장돼요)' : '파일을 올리지 않으면 이 스킨에 맞춘 합성음이 나요';
+    });
     if (s) {
       if (cfg.kill === 'valo') { cfg.kill = 'skin'; $('kill').value = 'skin'; A.save(); }
       const img = new Image();
@@ -111,7 +115,28 @@
       A.weapon = { title: w.name + ' · ' + s.name, img, mag: w.stats && w.stats.mag, rate: w.stats && w.stats.rate, reload: w.stats && w.stats.reload };
     } else A.weapon = null;
   }
+  function initSkinSound() {
+    $('skinSound').addEventListener('change', async (e) => {
+      const f = e.target.files[0];
+      if (!f || !cfg.skin) { $('skinSoundMsg').textContent = '스킨을 먼저 골라 주세요'; return; }
+      try {
+        await A.audio.saveSkinSound(cfg.skin, f);
+        cfg.kill = 'skin'; $('kill').value = 'skin'; A.save();
+        $('skinSoundClear').hidden = false;
+        $('skinSoundMsg').textContent = f.name + ' 적용'; $('skinSoundMsg').className = 'msg ok';
+        A.audio.preview();
+      } catch (err) {
+        $('skinSoundMsg').textContent = '이 파일은 재생할 수 없어요'; $('skinSoundMsg').className = 'msg err';
+      }
+      e.target.value = '';
+    });
+    $('skinSoundClear').onclick = async () => {
+      await A.audio.clearSkinSound(cfg.skin);
+      $('skinSoundClear').hidden = true; $('skinSoundMsg').textContent = '지웠어요. 합성음으로 돌아가요'; $('skinSoundMsg').className = 'msg';
+    };
+  }
   async function initSkins() {
+    initSkinSound();
     try {
       const weapons = await A.skins.load();
       const wsel = $('weapon'), ssel = $('skin');
