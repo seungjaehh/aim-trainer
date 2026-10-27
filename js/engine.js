@@ -29,7 +29,7 @@
       this.t = 0;
       this.mouseDown = false;
       this.cool = 0;
-      this.kick = 0; this.feed = []; this.pops = [];
+      this.kick = 0; this.feed = []; this.pops = []; this.tracers = [];
       this.ammo = Infinity; this.reloading = 0;
       this.resize();
     }
@@ -63,8 +63,8 @@
       this.targets = []; this.wall = null; this.marks = [];
       this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, ttk: 0, score: 0, extra: {} };
       this.t = 0; this.cool = 0; this.yaw = 0; this.pitch = 0; this.banner = '';
-      this.kick = 0; this.feed = []; this.pops = []; this.reloading = 0;
-      this.ammo = this.gun() ? A.weapon.mag : Infinity;
+      this.kick = 0; this.feed = []; this.pops = []; this.tracers = []; this.reloading = 0;
+      this.ammo = Infinity;
       mode.setup(this);
     }
 
@@ -122,12 +122,14 @@
       if (this.cool > 0 || this.reloading > 0) return;
       if (w && this.ammo <= 0) { this.reload(); return; }
       if (w) this.ammo--;
+      if (w && this.muzzle) this.tracers.push({ t: 0.12, life: 0.12, x1: this.muzzle.x, y1: this.muzzle.y, x2: this.cx, y2: this.cy });
       this.cool = w ? Math.max(0.05, 1 / w.rate) : 0.09;
       this.kick = Math.min(1, this.kick + 0.7);
       this.stats.shots++;
       const hit = this.hitAt(true);
       if (w && this.ammo <= 0) this.reload();
-      if (!hit) { if (this.mode.onMiss) this.mode.onMiss(this); return; }
+      if (!hit) { A.audio.resetStreak(); if (this.mode.onMiss) this.mode.onMiss(this); return; }  // 한 발이라도 놓치면 킬 소리는 1킬부터
+
       const { t, part } = hit;
       this.stats.hits++;
       t.hp -= t.kind === 'orb' ? 1 : (part === 'head' ? 100 : 34);
@@ -162,11 +164,12 @@
       for (const t of this.targets) if (t.flash) t.flash = Math.max(0, t.flash - dt);
       this.marks = this.marks.filter((m) => (m.t -= dt) > 0);
       this.pops = this.pops.filter((m) => (m.t -= dt) > 0);
+      this.tracers = this.tracers.filter((m) => (m.t -= dt) > 0);
       this.feed = this.feed.filter((m) => (m.t -= dt) > 0);
       this.kick = Math.max(0, this.kick - dt * 6);
       if (this.reloading > 0) {
         this.reloading -= dt;
-        if (this.reloading <= 0) { this.reloading = 0; if (this.gun()) this.ammo = A.weapon.mag; }
+        if (this.reloading <= 0) { this.reloading = 0; this.ammo = Infinity; }
       }
     }
 
@@ -300,6 +303,7 @@
         ctx.stroke();
       }
       this.drawPops(ctx);
+      this.drawTracers(ctx);
       this.drawWeapon(ctx);
       this.drawFeed(ctx);
     }
@@ -313,11 +317,14 @@
       if (img && w.fp) {  // 내가 올린 1인칭 총: 오른쪽 아래 모서리에 붙여 그린다
         const tw = Math.min(W * 0.5, 900 * k), th = tw * img.naturalHeight / img.naturalWidth;
         const dip = this.reloading > 0 && w.reload ? Math.sin(Math.PI * (1 - this.reloading / w.reload)) : 0;
-        ctx.drawImage(img, W - tw + 20 * k - this.kick * 26 * k, H - th + 30 * k + this.kick * 22 * k + dip * 260 * k, tw, th);
+        const ox = W - tw + 20 * k - this.kick * 26 * k, oy = H - th + 30 * k + this.kick * 22 * k + dip * 260 * k;
+        ctx.drawImage(img, ox, oy, tw, th);
+        this.muzzle = { x: ox + tw * 0.17, y: oy + th * 0.1 };  // 이미지 윗쪽 앞 끝 근처
       } else if (img) {
         const tw = Math.min(W * 0.34, 640 * k), th = tw * img.naturalHeight / img.naturalWidth;
         const dip = this.reloading > 0 && w.reload ? Math.sin(Math.PI * (1 - this.reloading / w.reload)) : 0;
         ctx.save();
+        this.muzzle = { x: W - tw * 0.95, y: H - th * 0.5 };
         ctx.translate(W - tw * 0.52 - this.kick * 28 * k, H - th * 0.3 + this.kick * 24 * k + dip * 170 * k);
         ctx.rotate(rad(-8 - this.kick * 4 + dip * 12));
         ctx.drawImage(img, -tw / 2, -th / 2, tw, th);
@@ -358,6 +365,25 @@
     }
 
     /* 맞힌 곳에서 떠오르는 피해량 숫자 */
+    /* 총알 궤적: 발로란트처럼 총구에서 조준점으로 빠르게 날아가는 짧고 밝은 노란 줄 */
+    drawTracers(ctx) {
+      const k = this.H / 1080;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      for (const m of this.tracers) {
+        const p = 1 - m.t / m.life, head = Math.min(1, p * 1.25), tail = Math.max(0, head - 0.3);
+        if (tail >= 1) continue;
+        const dx = m.x2 - m.x1, dy = m.y2 - m.y1;
+        const ax = m.x1 + dx * tail, ay = m.y1 + dy * tail, bx = m.x1 + dx * head, by = m.y1 + dy * head;
+        const g = ctx.createLinearGradient(ax, ay, bx, by);
+        g.addColorStop(0, 'rgba(255,200,60,0)'); g.addColorStop(1, 'rgba(255,245,190,' + (0.95 * (1 - p * 0.6)) + ')');
+        ctx.strokeStyle = g; ctx.lineWidth = Math.max(1.5, 3.2 * k * (1 - p * 0.5));
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     drawPops(ctx) {
       const k = this.H / 1080;
       ctx.textAlign = 'center';
