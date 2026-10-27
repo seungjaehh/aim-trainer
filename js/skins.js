@@ -89,5 +89,5 @@
     return img;
   };
   const clearImage = async (id) => { try { await run('readwrite', (s) => s.delete(id)); } catch (e) { /* 없으면 그만 */ } };
-  A.skins = { load, find, weapon, all: () => weapons, loadImage, saveImage, clearImage, localAsset };
+  A.skins = { load, find, weapon, all: () => weapons, loadImage, saveImage, clearImage, localAsset, isLocal };
 })(window.Aim = window.Aim || {});

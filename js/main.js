@@ -106,7 +106,7 @@
     A.audio.setSkin(s || null);
     A.audio.loadSkinSound(s && s.id).then((has) => {
       $('skinSoundClear').hidden = !has;
-      $('skinSoundMsg').textContent = !s ? '' : has ? '올린 소리를 쓰는 중이에요 (이 브라우저에만 저장돼요)' : '파일을 올리지 않으면 이 스킨에 맞춘 합성음이 나요';
+      $('skinSoundMsg').textContent = !s ? '' : has ? (A.skins.isLocal ? '폴더(local/)의 파일을 쓰는 중이에요' : '올린 소리를 쓰는 중이에요 (이 브라우저에만 저장돼요)') : '파일을 올리지 않으면 이 스킨에 맞춘 합성음이 나요';
     });
     if (s) {
       if (cfg.kill === 'valo') { cfg.kill = 'skin'; $('kill').value = 'skin'; A.save(); }

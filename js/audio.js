@@ -1,7 +1,7 @@
 /* 킬·타격 사운드. 파일 없이 WebAudio 로 합성하고, 내 소리 파일을 올려 쓸 수도 있다.
    '스킨 맞춤' 은 고른 스킨의 시리즈(프라임·리버·오니…)마다 어울리는 소리를 합성해 낸다. */
 (function (A) {
-  let ctx = null, custom = null, skin = null, skinBuf = null;
+  let ctx = null, custom = null, skin = null, skinBufs = [], streak = 0;
   const audio = () => (ctx = ctx || new (window.AudioContext || window.webkitAudioContext)());
 
   function tone(freq, start, dur, opts) {
@@ -122,32 +122,37 @@
   A.audio = {
     lists: LISTS,
     async loadSkinSound(id) {
-      skinBuf = null;
+      skinBufs = []; streak = 0;
       if (!id) return false;
       try {
         const l = A.skins && await A.skins.localAsset(id);
-        const data = l && l.kill ? await fetch('local/' + encodeURIComponent(l.kill)).then((r) => r.arrayBuffer())
-          : await idbDo('readonly', (s) => s.get(id));
-        if (data) skinBuf = await audio().decodeAudioData(data.slice(0));
+        const names = l && (l.kills || (l.kill && [l.kill]));  // kills: 연속 헤드샷 1~5킬 순서
+        const dec = async (data) => audio().decodeAudioData(data.slice(0));
+        let bufs;
+        if (names && names.length) bufs = await Promise.all(names.map((n) => fetch('local/' + encodeURIComponent(n)).then((r) => r.arrayBuffer()).then(dec)));
+        else { const data = await idbDo('readonly', (s) => s.get(id)); bufs = data ? [await dec(data)] : []; }
+        skinBufs = bufs;
       } catch (e) { /* 저장소를 못 써도 합성음으로 동작 */ }
-      return !!skinBuf;
+      return skinBufs.length > 0;
     },
     async saveSkinSound(id, file) {
       const data = await file.arrayBuffer();
       const buf = await audio().decodeAudioData(data.slice(0));  // 재생 못 하는 파일이면 여기서 던진다
       await idbDo('readwrite', (s) => s.put(data, id));
-      skinBuf = buf;
+      skinBufs = [buf];
     },
-    async clearSkinSound(id) { skinBuf = null; try { await idbDo('readwrite', (s) => s.delete(id)); } catch (e) { /* 없으면 그만 */ } },
-    hasSkinSound() { return !!skinBuf; },
-    setSkin(s) { skin = s || null; },
+    async clearSkinSound(id) { skinBufs = []; try { await idbDo('readwrite', (s) => s.delete(id)); } catch (e) { /* 없으면 그만 */ } },
+    hasSkinSound() { return skinBufs.length > 0; },
+    resetStreak() { streak = 0; },
+    setSkin(s) { skin = s || null; streak = 0; },
     profile() { return profileFor(skin); },
     kill(hs) {
       const k = A.cfg.kill;
       if (k === 'none') return;
       if (k === 'custom') { if (!playCustom()) KILL.valo(hs); return; }
       if (k === 'skin') {
-        if (skinBuf) { playBuf(skinBuf); return; }
+        streak = hs ? streak + 1 : 0;  // 헤드샷 연속 킬이 이어질 때만 단계가 오르고, 5단계부터는 계속 5단계 소리
+        if (skinBufs.length) { playBuf(skinBufs[Math.min(streak, skinBufs.length) - 1] || skinBufs[0]); return; }
         const p = profileFor(skin);
         if (!p) { KILL.valo(hs); return; }
         SKIN[p](hs ? 1.25 : 1);
