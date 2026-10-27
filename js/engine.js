@@ -9,7 +9,12 @@
 
   /* 사격장 봇 (m, 머리 중심 기준 / 아래가 +) — discord_bot 미리보기와 같은 모양 */
   const BOT = [
-    { part: 'body', round: false, r: [-0.20, 0.17, 0.20, 1.20], fill: '#606270' },
+    { part: 'body', round: false, r: [-0.20, 0.17, 0.20, 0.80], fill: '#606270' },
+    { part: 'body', round: false, r: [-0.19, 0.80, 0.19, 0.96], fill: '#434754' },
+    { part: 'body', round: true, r: [-0.19, 0.93, -0.035, 1.54], fill: '#555b67' },
+    { part: 'body', round: true, r: [0.035, 0.93, 0.19, 1.54], fill: '#555b67' },
+    { part: 'body', round: false, r: [-0.22, 1.49, -0.025, 1.60], fill: '#303745' },
+    { part: 'body', round: false, r: [0.025, 1.49, 0.22, 1.60], fill: '#303745' },
     { part: 'body', round: true, r: [-0.36, 0.15, -0.18, 0.42], fill: '#787a88' },
     { part: 'body', round: true, r: [0.18, 0.15, 0.36, 0.42], fill: '#787a88' },
     { part: 'body', round: false, r: [-0.035, 0.10, 0.035, 0.19], fill: '#3e3e4a' },
@@ -21,6 +26,7 @@
     constructor(canvas) {
       this.canvas = canvas;
       this.ctx = canvas.getContext('2d');
+      this.eyeHeight = 1.6;
       this.yaw = 0; this.pitch = 0;
       this.targets = [];
       this.wall = null;
@@ -47,15 +53,48 @@
     look(dx, dy) {
       const k = YAW * A.cfg.sens;
       this.yaw = wrap(this.yaw + dx * k);
-      this.pitch = Math.max(-89, Math.min(89, this.pitch - dy * k));
+      this.pitch = Math.max(-85, Math.min(85, this.pitch - dy * k));
     }
 
-    /* 월드 각도(az, el) → 화면 좌표. 시야 밖이면 null */
+    /* 모든 물체와 바닥에 같은 카메라 회전을 적용한다. y는 위쪽이 +. */
+    cameraPoint(x, y, z) {
+      const yaw = rad(this.yaw), pitch = rad(this.pitch);
+      const rx = Math.cos(yaw) * x - Math.sin(yaw) * z;
+      const rz = Math.sin(yaw) * x + Math.cos(yaw) * z;
+      const ry = y - this.eyeHeight;
+      return { x: rx, y: Math.cos(pitch) * ry - Math.sin(pitch) * rz,
+        z: Math.sin(pitch) * ry + Math.cos(pitch) * rz };
+    }
+
+    screenPoint(p) {
+      if (p.z < 0.12) return null;
+      const s = this.focal / p.z;
+      return { x: this.cx + p.x * s, y: this.cy - p.y * s, s, depth: p.z };
+    }
+
+    worldPoint(x, y, z) { return this.screenPoint(this.cameraPoint(x, y, z)); }
+
+    position(az, el, d) {
+      return { x: Math.sin(rad(az)) * Math.cos(rad(el)) * d,
+        y: this.eyeHeight + Math.sin(rad(el)) * d,
+        z: Math.cos(rad(az)) * Math.cos(rad(el)) * d };
+    }
+
+    targetPosition(t) {
+      const p = this.position(t.az, t.el, t.d);
+      if (t.kind === 'orb') p.y = Math.max(t.r + 0.16, p.y);
+      return p;
+    }
+
+    targetPoint(t) {
+      const p = this.targetPosition(t);
+      return this.worldPoint(p.x, p.y, p.z);
+    }
+
+    /* 기존 모드가 쓰는 각도도 같은 3D 카메라로 투영한다. */
     project(az, el) {
-      const dx = wrap(az - this.yaw), dy = el - this.pitch;
-      if (Math.abs(dx) > 80 || Math.abs(dy) > 80) return null;
-      const f = this.focal;
-      return { x: this.cx + f * Math.tan(rad(dx)), y: this.cy - f * Math.tan(rad(dy)) };
+      const p = this.position(az, el, 10);
+      return this.worldPoint(p.x, p.y, p.z);
     }
 
     reset(mode) {
@@ -83,20 +122,19 @@
     /* 십자선 위치에 닿는 타겟과 부위 */
     hitAt(onlyVisible) {
       const list = this.targets.slice().sort((a, b) => a.d - b.d);
-      const edge = this.wallEdge();
       for (const t of list) {
         if (onlyVisible && !t.vis) continue;
-        const p = this.project(t.az, t.el);
+        const p = this.targetPoint(t);
         if (!p) continue;
-        const s = this.focal / t.d;
-        if (edge && ((edge.side > 0 && this.cx >= edge.x) || (edge.side < 0 && this.cx <= edge.x)) && t.d >= this.wall.d) continue;
+        const s = p.s;
+        if (this.wallBlocks(t)) continue;
         if (t.kind === 'orb') {
           const r = t.r * s;
           if ((this.cx - p.x) ** 2 + (this.cy - p.y) ** 2 <= r * r) return { t, part: 'head' };
         } else {
           for (const b of BOT) {
-            const [x0, y0, x1, y1] = b.r;
-            if (this.cx >= p.x + x0 * s && this.cx <= p.x + x1 * s && this.cy >= p.y + y0 * s && this.cy <= p.y + y1 * s) return { t, part: b.part };
+            const corners = this.botCorners(t, b);
+            if (corners && this.pointInPolygon(this.cx, this.cy, corners)) return { t, part: b.part };
           }
         }
       }
@@ -107,6 +145,16 @@
       if (!this.wall) return null;
       const p = this.project(this.wall.az, 0);
       return p ? { x: p.x, side: this.wall.side } : null;
+    }
+
+    wallBlocks(t) {
+      if (!this.wall) return false;
+      const wall = this.wall, forward = Math.cos(rad(this.yaw)) * Math.cos(rad(this.pitch));
+      if (forward <= 0) return false;
+      const distance = wall.d / forward, x = Math.sin(rad(this.yaw)) * Math.cos(rad(this.pitch)) * distance;
+      const y = this.eyeHeight + Math.sin(rad(this.pitch)) * distance;
+      const edge = Math.tan(rad(wall.az)) * wall.d;
+      return this.targetPosition(t).z > wall.d && (x-edge)*wall.side >= 0 && Math.abs(x) <= 36 && y >= 0 && y <= 3.6;
     }
 
     /* 탄창·연사 속도가 있는 총을 골랐으면 그 총 (칼 등은 null) */
@@ -134,8 +182,8 @@
       this.stats.hits++;
       t.hp -= t.kind === 'orb' ? 1 : (part === 'head' ? 100 : 34);
       if (t.kind === 'bot') {
-        const p = this.project(t.az, t.el);
-        if (p) this.pops.push({ t: 0.7, x: p.x + (Math.random() - 0.5) * 20, y: p.y + (part === 'head' ? -0.55 : 0.1) * (this.focal / t.d), text: part === 'head' ? '160' : '40', head: part === 'head' });
+        const p = this.targetPoint(t);
+        if (p) this.pops.push({ t: 0.7, x: p.x + (Math.random() - 0.5) * 20, y: p.y + (part === 'head' ? -0.55 : 0.1) * p.s, text: part === 'head' ? '160' : '40', head: part === 'head' });
       }
       if (t.hp <= 0) {
         this.stats.kills++;
@@ -174,6 +222,45 @@
     }
 
     /* ---- 그리기 ---- */
+    /* 카메라 뒤로 넘어가는 바닥/벽은 근평면에서 잘라 화면 뒤집힘을 막는다. */
+    polygon(points, fill, stroke) {
+      const near = 0.12, input = points.map((p) => this.cameraPoint(...p)), clipped = [];
+      for (let i = 0; i < input.length; i++) {
+        const a = input[i], b = input[(i + 1) % input.length];
+        if (a.z >= near) clipped.push(a);
+        if ((a.z >= near) !== (b.z >= near)) {
+          const t = (near - a.z) / (b.z - a.z);
+          clipped.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: near });
+        }
+      }
+      if (clipped.length < 3) return;
+      const screen = clipped.map((p) => this.screenPoint(p));
+      const { ctx } = this;
+      ctx.beginPath();
+      screen.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      ctx.closePath();
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = Math.max(1, this.H / 1080); ctx.stroke(); }
+    }
+
+    pointInPolygon(x, y, corners) {
+      let inside = false;
+      for (let i = 0, j = corners.length - 1; i < corners.length; j = i++) {
+        const a = corners[i], b = corners[j];
+        if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+      }
+      return inside;
+    }
+
+    botCorners(t, b, grow = 0) {
+      const p = this.targetPosition(t), [x0, y0, x1, y1] = b.r;
+      // 각 봇은 카메라 위치를 향하는 수직 평면. 시점을 위아래로 돌려도 발은 바닥에 고정된다.
+      const right = { x: Math.cos(rad(t.az)), z: -Math.sin(rad(t.az)) };
+      const points = [[x0 - grow, y0 - grow], [x1 + grow, y0 - grow], [x1 + grow, y1 + grow], [x0 - grow, y1 + grow]]
+        .map(([x, y]) => this.worldPoint(p.x + right.x * x, p.y - y, p.z + right.z * x));
+      return points.every(Boolean) ? points : null;
+    }
+
     background() {
       const { ctx, W, H } = this;
       const themes = {
@@ -182,7 +269,7 @@
         sky: ['#7db3ec', '#4f86c4', 'rgba(255,255,255,0.12)'],
         grass: ['#5c9462', '#3f6e46', 'rgba(255,255,255,0.1)'],
       };
-      if (A.cfg.bg === 'range') { this.rangeBackground(); return; }
+      if (A.cfg.bg !== 'grid') { this.rangeBackground(); return; }
       const [a, b, line] = themes[A.cfg.bg] || themes.dark;
       const grad = ctx.createLinearGradient(0, 0, 0, H);
       grad.addColorStop(0, a); grad.addColorStop(1, b);
@@ -201,53 +288,87 @@
       ctx.stroke();
     }
 
-    /* 사격장: 어두운 벽과 원근감 있는 바닥, 수평선의 붉은 띠 */
+    /* 고정된 눈높이의 실내 연습장. 바닥 타일·거리선·벽을 같은 월드 좌표로 그린다. */
     rangeBackground() {
-      const { ctx, W, H, cx, focal: f } = this;
-      const hy = this.cy + f * Math.tan(rad(this.pitch));   // 눈높이(수평선)의 화면 y
-      const top = Math.max(0, Math.min(hy, H));
-      const sky = ctx.createLinearGradient(0, 0, 0, Math.max(1, hy));
-      sky.addColorStop(0, '#1b2a3a'); sky.addColorStop(1, '#3a4f63');
-      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, top);
-      if (hy < H) {
-        const floor = ctx.createLinearGradient(0, hy, 0, H);
-        floor.addColorStop(0, '#59636e'); floor.addColorStop(1, '#222831');
-        ctx.fillStyle = floor; ctx.fillRect(0, Math.max(0, hy), W, H - Math.max(0, hy));
-      }
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-      ctx.beginPath();
-      for (let az = -180; az < 180; az += 8) {      // 벽 패널 줄
-        const p = this.project(az, 0);
-        if (p) { ctx.moveTo(Math.round(p.x) + 0.5, 0); ctx.lineTo(Math.round(p.x) + 0.5, top); }
-      }
-      ctx.stroke();
-      if (hy < H) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.09)';
-        ctx.beginPath();
-        for (const d of [2, 3, 4.5, 6.5, 9, 13, 20, 35]) {  // 바닥 가로줄 (눈높이 1.6m)
-          const y = this.cy - f * Math.tan(rad(-Math.atan(1.6 / d) * 180 / Math.PI - this.pitch));
-          if (y > hy && y < H) { ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(W, Math.round(y) + 0.5); }
+      const { ctx, W, H } = this;
+      const dark = A.cfg.bg === 'dark';
+      ctx.fillStyle = dark ? '#1b242c' : '#737e86'; ctx.fillRect(0, 0, W, H);
+      this.polygon([[-36,10,-48],[36,10,-48],[36,10,48],[-36,10,48]], '#26323b');
+      // 정면·후면·양옆 벽. 가장자리에서 바닥과 정확히 맞닿는다.
+      for (const side of [-1, 1]) {
+        const z = side * 48;
+        for (let x = -36; x < 36; x += 6) {
+          this.polygon([[x,0,z],[x+6,0,z],[x+6,10,z],[x,10,z]], dark ? '#303c47' : '#89949b', '#66717a');
+          this.polygon([[x,0,z],[x+6,0,z],[x+6,1.2,z],[x,1.2,z]], '#3c4a55');
+          this.polygon([[x,1.59,z-side*.02],[x+6,1.59,z-side*.02],[x+6,1.64,z-side*.02],[x,1.64,z-side*.02]], '#c78e66');
+          this.polygon([[x,0,z-side*.03],[x+.18,0,z-side*.03],[x+.18,10,z-side*.03],[x,10,z-side*.03]], '#35434e');
         }
-        for (let az = -90; az <= 90; az += 5) {       // 소실점으로 모이는 세로줄
-          const p = this.project(this.yaw + az, 0);
-          if (p) { ctx.moveTo(p.x, hy); ctx.lineTo(cx + (p.x - cx) * 4, H); }
+        const x = side * 36;
+        for (let z = -48; z < 48; z += 8) {
+          this.polygon([[x,0,z],[x,0,z+8],[x,10,z+8],[x,10,z]], dark ? '#263540' : '#697a85', '#52636e');
+          this.polygon([[x-side*.02,1.59,z],[x-side*.02,1.59,z+8],[x-side*.02,1.64,z+8],[x-side*.02,1.64,z]], '#c78e66');
+          this.polygon([[x-side*.03,0,z],[x-side*.03,0,z+.22],[x-side*.03,10,z+.22],[x-side*.03,10,z]], '#35434e');
         }
-        ctx.stroke();
       }
-      ctx.fillStyle = 'rgba(255,70,85,0.5)';
-      ctx.fillRect(0, Math.round(hy) - 1, W, 2);
+      // 타일 크기는 4m. 시선에 따라 소실점도 함께 움직인다.
+      for (let x = -36; x < 36; x += 4) for (let z = -48; z < 48; z += 4) {
+        const checker = ((x + 36) / 4 + (z + 48) / 4) % 2;
+        const fade = Math.min(1, Math.hypot(x + 2, z + 2) / 55);
+        const v = Math.round((dark ? 66 : 103) - fade * 13 + checker * 4);
+        this.polygon([[x,0,z],[x+4,0,z],[x+4,0,z+4],[x,0,z+4]], `rgb(${v},${v+10},${v+15})`, dark ? '#38444d' : '#53616a');
+      }
+      // 사격 레인과 거리 표시: 바닥 높이에 붙어 있어 상하 시점의 기준이 된다.
+      for (const x of [-5, 5]) this.polygon([[x-.025,.008,0],[x+.025,.008,0],[x+.025,.008,40],[x-.025,.008,40]], '#94a6ad');
+      for (const d of [5, 10, 15, 20, 30, 40]) {
+        this.polygon([[-5,.012,d-.025],[5,.012,d-.025],[5,.012,d+.025],[-5,.012,d+.025]], '#a8b4b4');
+        this.floorText(d + ' m', -5.8, d, '#cbd3d0');
+        this.floorText(d + ' m', 5.8, d, '#cbd3d0');
+      }
+      // 발밑 사격선과 천장 조명. 과한 카메라 흔들림 없이 고정된 공간 기준만 제공한다.
+      this.polygon([[-8,.015,1.9],[8,.015,1.9],[8,.015,2.06],[-8,.015,2.06]], '#d6a369');
+      for (const z of [-32, -16, 0, 16, 32]) {
+        this.polygon([[-36,9.7,z],[36,9.7,z],[36,9.7,z+.35],[-36,9.7,z+.35]], '#192831');
+        for (const x of [-10, 10]) this.polygon([[x-1.6,9.65,z],[x+1.6,9.65,z],[x+1.6,9.65,z+.2],[x-1.6,9.65,z+.2]], '#dbe7dc');
+      }
+      const sign = this.worldPoint(0, 5.4, 47.9);
+      if (sign && sign.depth > 4) {
+        ctx.save(); ctx.textAlign = 'center'; ctx.fillStyle = '#e6e8df';
+        ctx.font = '600 ' + Math.max(1, 1.2 * sign.s) + 'px system-ui, sans-serif';
+        ctx.fillText('PRACTICE RANGE', sign.x, sign.y);
+        ctx.font = '500 ' + Math.max(1, .35 * sign.s) + 'px system-ui, sans-serif'; ctx.fillStyle = '#c1ccc9';
+        ctx.fillText('AIM  /  FOCUS  /  REPEAT', sign.x, sign.y + .8 * sign.s); ctx.restore();
+      }
+    }
+
+    floorText(text, x, z, color) {
+      const a = this.worldPoint(x - .65, .02, z + .5), b = this.worldPoint(x + .65, .02, z + .5), c = this.worldPoint(x - .65, .02, z - .5);
+      if (!a || !b || !c) return;
+      const ctx = this.ctx;
+      ctx.save(); ctx.transform((b.x-a.x)/120, (b.y-a.y)/120, (c.x-a.x)/70, (c.y-a.y)/70, a.x, a.y);
+      ctx.fillStyle = color; ctx.font = '600 30px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(text, 60, 35); ctx.restore();
+    }
+
+    drawShadow(t) {
+      const p = this.targetPosition(t), radius = t.kind === 'bot' ? .46 : t.r * 1.1;
+      const alpha = t.kind === 'bot' ? .32 : .20 / (1 + p.y * .2);
+      const points = [];
+      for (let i = 0; i < 24; i++) {
+        const a = i * Math.PI / 12;
+        points.push([p.x + Math.cos(a) * radius, .025, p.z + Math.sin(a) * radius * .65]);
+      }
+      this.polygon(points, `rgba(8,16,24,${alpha})`);
     }
 
     drawBot(t) {
-      const p = this.project(t.az, t.el);
+      const p = this.targetPoint(t);
       if (!p) return;
-      const { ctx } = this, s = this.focal / t.d, g = Math.max(1.5, s * 0.02);
+      const { ctx } = this, g = .018;
       const path = (b, grow) => {
-        const [x0, y0, x1, y1] = b.r;
-        const X = p.x + x0 * s - grow, Y = p.y + y0 * s - grow, w = (x1 - x0) * s + grow * 2, h = (y1 - y0) * s + grow * 2;
+        const corners = this.botCorners(t, b, grow);
+        if (!corners) return;
         ctx.beginPath();
-        if (b.round && ctx.roundRect) ctx.roundRect(X, Y, w, h, Math.min(w, h) * 0.3 + grow); else ctx.rect(X, Y, w, h);
+        corners.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath();
         ctx.fill();
       };
       ctx.fillStyle = HIGHLIGHT;
@@ -256,9 +377,9 @@
     }
 
     drawOrb(t) {
-      const p = this.project(t.az, t.el);
+      const p = this.targetPoint(t);
       if (!p) return;
-      const r = t.r * (this.focal / t.d), { ctx } = this;
+      const r = t.r * p.s, { ctx } = this;
       ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
       ctx.fillStyle = t.flash ? '#ffffff' : (t.color || '#3fd7ff');
       ctx.fill();
@@ -267,27 +388,24 @@
 
     drawWall() {
       if (!this.wall) return;
-      const e = this.wallEdge();
-      if (!e) return;
-      const { ctx, W, H } = this;
-      ctx.fillStyle = '#3a3f4d';
-      if (this.wall.side > 0) ctx.fillRect(e.x, 0, W - e.x, H); else ctx.fillRect(0, 0, e.x, H);
-      ctx.fillStyle = '#7b8196';
-      ctx.fillRect(this.wall.side > 0 ? e.x : e.x - 3, 0, 3, H);
-      if (A.cfg.guide) {  // 머리 높이 가이드
-        ctx.fillStyle = 'rgba(255,255,255,0.35)';
-        ctx.fillRect(e.x - 14, this.cy - 1, 28, 2);
-      }
+      const { d, side, az } = this.wall, x = Math.tan(rad(az)) * d, end = side * 36;
+      this.polygon([[x,0,d],[end,0,d],[end,3.6,d],[x,3.6,d]], '#3b4b57', '#778994');
+      this.polygon([[x,0,d-.015],[x+side*.09,0,d-.015],[x+side*.09,3.6,d-.015],[x,3.6,d-.015]], '#a7b3b5');
+      this.polygon([[x,0,d],[end,0,d],[end,0,d+.45],[x,0,d+.45]], '#283843');
+      if (A.cfg.guide) this.polygon([[x,1.58,d-.025],[x+side*.65,1.58,d-.025],[x+side*.65,1.62,d-.025],[x,1.62,d-.025]], '#deb17b');
     }
 
     render() {
       const { ctx } = this;
       this.background();
+      if (A.cfg.bg !== 'grid') for (const t of this.targets) if (t.vis) this.drawShadow(t);
+      let wallDrawn = false;
       for (const t of this.targets.slice().sort((a, b) => b.d - a.d)) {
+        if (this.wall && !wallDrawn && t.d < this.wall.d) { this.drawWall(); wallDrawn = true; }
         if (!t.vis) continue;
         if (t.kind === 'orb') this.drawOrb(t); else this.drawBot(t);
       }
-      this.drawWall();
+      if (!wallDrawn) this.drawWall();
       if (this.mode.draw) this.mode.draw(this, ctx);
       // 조준선
       A.crosshair.draw(ctx, this.cx, this.cy, A.crossData, A.cfg.chScale);
@@ -306,6 +424,17 @@
       this.drawTracers(ctx);
       this.drawWeapon(ctx);
       this.drawFeed(ctx);
+      this.drawOrientation(ctx);
+    }
+
+    drawOrientation(ctx) {
+      const k = this.H / 1080, x = 28 * k, y = this.H - 36 * k;
+      ctx.save(); ctx.textAlign = 'left'; ctx.font = '500 ' + Math.round(14*k) + 'px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(12,22,29,.65)'; ctx.fillRect(x-10*k,y-24*k,230*k,48*k);
+      ctx.fillStyle = '#b8c9ce'; ctx.fillText('시선', x, y);
+      ctx.fillStyle = Math.abs(this.pitch) < 1 ? '#78ddca' : '#e1e7e5';
+      const label = Math.abs(this.pitch) < 1 ? '수평  0°' : (this.pitch > 0 ? '위  +' : '아래  −') + Math.abs(this.pitch).toFixed(1) + '°';
+      ctx.fillText(label, x+42*k, y); ctx.restore();
     }
 
     /* 오른쪽 아래 무기: 쏘면 반동, 재장전하면 아래로 내려간다. 탄약 숫자도 같이 */

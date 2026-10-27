@@ -24,10 +24,17 @@
   }
   function drawPreview() {
     const c = $('preview'), x = c.getContext('2d');
-    const bg = { dark: ['#242a38', '#10131a'], wall: ['#b8b2a6', '#9c968a'], sky: ['#7db3ec', '#4f86c4'], grass: ['#5c9462', '#3f6e46'] }[cfg.bg] || ['#242a38', '#10131a'];
+    const bg = { range: ['#89949b', '#56636c'], dark: ['#303c47', '#303c47'], grid: ['#242a38', '#10131a'] }[cfg.bg] || ['#89949b', '#56636c'];
     const g = x.createLinearGradient(0, 0, 0, c.height);
     g.addColorStop(0, bg[0]); g.addColorStop(1, bg[1]);
     x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);
+    if (cfg.bg !== 'grid') {
+      x.fillStyle = cfg.bg === 'dark' ? '#424e57' : '#68777e'; x.fillRect(0,c.height*.57,c.width,c.height*.43);
+      x.strokeStyle = '#93a3a6'; x.lineWidth = 1; x.beginPath();
+      for (const y of [.65,.78,.96]) { x.moveTo(0,c.height*y); x.lineTo(c.width,c.height*y); }
+      for (const a of [-1,0,1,2]) { x.moveTo(c.width*.5,c.height*.57); x.lineTo(c.width*a,c.height); }
+      x.stroke();
+    }
     A.crosshair.draw(x, c.width / 2, c.height / 2, A.crossData, cfg.chScale);
   }
 
@@ -138,20 +145,17 @@
     initSkinSound();
     try {
       const weapons = await A.skins.load();
-      const wsel = $('weapon'), ssel = $('skin');
-      fillOptions(wsel, [['', '선택 안 함']].concat(weapons.map((w) => [w.id, w.name])), cfg.weapon);
-      const fillSkins = () => {
-        const w = weapons.find((x) => x.id === wsel.value);
-        fillOptions(ssel, w ? w.skins.map((s) => [s.id, s.name]) : [], cfg.skin);
-        if (w && !w.skins.some((s) => s.id === ssel.value)) { cfg.skin = ssel.value = w.skins[0].id; }
-      };
-      fillSkins();
-      wsel.onchange = () => { cfg.weapon = wsel.value; cfg.skin = ''; fillSkins(); cfg.skin = ssel.value; A.save(); showSkin(); };
+      const w = weapons[0], ssel = $('skin');
+      if (!w) throw new Error('밴달 스킨을 불러오지 못했어요');
+      cfg.weapon = w.id;
+      if (!w.skins.some((s) => s.id === cfg.skin)) cfg.skin = w.skins[0].id;
+      fillOptions(ssel, w.skins.map((s) => [s.id, s.name]), cfg.skin);
+      A.save();
       ssel.onchange = () => { cfg.skin = ssel.value; A.save(); showSkin(); };
       showSkin();
       $('skinMsg').textContent = '고른 스킨은 연습 중 화면 오른쪽 아래에 보여요.';
     } catch (e) {
-      $('weapon').innerHTML = '<option>불러오지 못했어요</option>';
+      $('skin').innerHTML = '<option>불러오지 못했어요</option>';
       $('skinMsg').textContent = '스킨 목록은 인터넷 연결이 필요해요. 다른 기능은 그대로 쓸 수 있어요.';
     }
   }
@@ -200,6 +204,7 @@
     raf = requestAnimationFrame(loop);
   }
   function toMenu() {
+    game.mouseDown = false;
     state = 'menu';
     cancelAnimationFrame(raf);
     overlay(''); $('menu').hidden = false; $('hudWeapon').hidden = true;
@@ -228,6 +233,7 @@
     $('home').onclick = toMenu;
   }
   function pause() {
+    game.mouseDown = false;
     state = 'pause';
     overlay('<h2>일시정지</h2><p class="msg">Esc 로 마우스가 풀렸어요.</p><div class="actions"><button class="primary" id="resume">계속하기</button><button id="home">메뉴</button></div>');
     $('resume').onclick = () => { overlay(''); state = 'run'; last = performance.now(); lock(); };
@@ -283,7 +289,9 @@
   });
   document.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() === 't' && state === 'run') start(current);
+    if (e.key === 'Escape' && !document.pointerLockElement && (state === 'run' || state === 'countdown')) pause();
   });
+  window.addEventListener('blur', () => { game.mouseDown = false; });
   window.addEventListener('resize', () => { game.resize(); if (state === 'menu') drawPreview(); });
 
   /* 주소 뒤에 #code=조준선코드 가 붙어 오면(디스코드 봇 링크) 그 조준선으로 바꿔 시작한다 */

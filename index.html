@@ -44,8 +44,7 @@
 
       <details>
         <summary>🔫 무기 스킨</summary>
-        <label>무기 <select id="weapon"><option>불러오는 중…</option></select></label>
-        <label>스킨 <select id="skin"></select></label>
+        <label>밴달 스킨 <select id="skin"><option>불러오는 중…</option></select></label>
         <img id="skinPreview" alt="" hidden>
         <p class="hint" id="skinMsg"></p>
         <label>이 스킨 킬사운드 파일 <input type="file" id="skinSound" accept="audio/*"></label>
@@ -60,7 +59,8 @@
         <label>연습 시간
           <select id="duration"><option value="30">30초</option><option value="60">60초</option><option value="120">120초</option></select>
         </label>
-        <label>배경 <select id="bg"><option value="dark">어두운 방</option><option value="wall">벽</option><option value="sky">하늘</option><option value="grass">풀</option></select></label>
+        <label>배경 <select id="bg"><option value="range">연습장 · 바닥과 거리 표시</option><option value="dark">어두운 연습장</option><option value="grid">기존 격자</option></select></label>
+        <p class="hint">조준선은 중앙에 고정돼요. 마우스를 위로 움직이면 위를 바라봐요. 바닥 거리선과 벽의 눈높이 띠로 시선을 확인하세요.</p>
         <label class="check"><input id="guide" type="checkbox"> 대기샷 머리 높이 가이드 표시</label>
       </details>
     </aside>
