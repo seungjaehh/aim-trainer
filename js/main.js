@@ -102,6 +102,14 @@
     if (s) $('skinPreview').src = s.icon;
     $('weaponImg').src = s ? s.icon : '';
     $('hudWeapon').hidden = true;
+    const w = s && A.skins.weapon(cfg.weapon);
+    A.audio.setSkin(s || null);
+    if (s) {
+      if (cfg.kill === 'valo') { cfg.kill = 'skin'; $('kill').value = 'skin'; A.save(); }
+      const img = new Image();
+      img.src = s.icon;
+      A.weapon = { title: w.name + ' · ' + s.name, img, mag: w.stats && w.stats.mag, rate: w.stats && w.stats.rate, reload: w.stats && w.stats.reload };
+    } else A.weapon = null;
   }
   async function initSkins() {
     try {
@@ -161,7 +169,7 @@
     game.reset(mode);
     state = 'countdown'; countdown = 3; left = cfg.duration;
     $('menu').hidden = true; overlay('');
-    $('hudWeapon').hidden = !$('weaponImg').getAttribute('src');
+    $('hudWeapon').hidden = true;
     lock();
     last = performance.now();
     cancelAnimationFrame(raf);
@@ -250,7 +258,8 @@
     if (!document.pointerLockElement && (state === 'run' || state === 'countdown')) pause();
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key.toLowerCase() === 'r' && state === 'run') start(current);
+    if (e.key.toLowerCase() === 'r' && state === 'run') game.reload();
+    if (e.key.toLowerCase() === 't' && state === 'run') start(current);
   });
   window.addEventListener('resize', () => { game.resize(); if (state === 'menu') drawPreview(); });
 

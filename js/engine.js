@@ -29,6 +29,8 @@
       this.t = 0;
       this.mouseDown = false;
       this.cool = 0;
+      this.kick = 0; this.feed = []; this.pops = [];
+      this.ammo = Infinity; this.reloading = 0;
       this.resize();
     }
 
@@ -61,6 +63,8 @@
       this.targets = []; this.wall = null; this.marks = [];
       this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, ttk: 0, score: 0, extra: {} };
       this.t = 0; this.cool = 0; this.yaw = 0; this.pitch = 0; this.banner = '';
+      this.kick = 0; this.feed = []; this.pops = []; this.reloading = 0;
+      this.ammo = this.gun() ? A.weapon.mag : Infinity;
       mode.setup(this);
     }
 
@@ -105,15 +109,32 @@
       return p ? { x: p.x, side: this.wall.side } : null;
     }
 
+    /* 탄창·연사 속도가 있는 총을 골랐으면 그 총 (칼 등은 null) */
+    gun() { const w = A.weapon; return w && w.mag ? w : null; }
+
+    reload() {
+      const w = this.gun();
+      if (w && !this.reloading && this.ammo < w.mag) this.reloading = w.reload || 2;
+    }
+
     fire() {
-      if (this.cool > 0) return;
-      this.cool = 0.09;
+      const w = this.gun();
+      if (this.cool > 0 || this.reloading > 0) return;
+      if (w && this.ammo <= 0) { this.reload(); return; }
+      if (w) this.ammo--;
+      this.cool = w ? Math.max(0.05, 1 / w.rate) : 0.09;
+      this.kick = Math.min(1, this.kick + 0.7);
       this.stats.shots++;
       const hit = this.hitAt(true);
+      if (w && this.ammo <= 0) this.reload();
       if (!hit) { if (this.mode.onMiss) this.mode.onMiss(this); return; }
       const { t, part } = hit;
       this.stats.hits++;
       t.hp -= t.kind === 'orb' ? 1 : (part === 'head' ? 100 : 34);
+      if (t.kind === 'bot') {
+        const p = this.project(t.az, t.el);
+        if (p) this.pops.push({ t: 0.7, x: p.x + (Math.random() - 0.5) * 20, y: p.y + (part === 'head' ? -0.55 : 0.1) * (this.focal / t.d), text: part === 'head' ? '160' : '40', head: part === 'head' });
+      }
       if (t.hp <= 0) {
         this.stats.kills++;
         if (part === 'head') this.stats.heads++;
@@ -121,6 +142,8 @@
         this.stats.score += part === 'head' ? 150 : 100;
         A.audio.kill(part === 'head');
         this.marks.push({ t: 0.22, kill: true });
+        this.feed.push({ t: 4, head: part === 'head' });
+        if (this.feed.length > 4) this.feed.shift();
         this.remove(t);
         this.mode.onKill(this, t, part);
       } else {
@@ -138,6 +161,13 @@
       this.mode.update(this, dt);
       for (const t of this.targets) if (t.flash) t.flash = Math.max(0, t.flash - dt);
       this.marks = this.marks.filter((m) => (m.t -= dt) > 0);
+      this.pops = this.pops.filter((m) => (m.t -= dt) > 0);
+      this.feed = this.feed.filter((m) => (m.t -= dt) > 0);
+      this.kick = Math.max(0, this.kick - dt * 6);
+      if (this.reloading > 0) {
+        this.reloading -= dt;
+        if (this.reloading <= 0) { this.reloading = 0; if (this.gun()) this.ammo = A.weapon.mag; }
+      }
     }
 
     /* ---- 그리기 ---- */
@@ -149,6 +179,7 @@
         sky: ['#7db3ec', '#4f86c4', 'rgba(255,255,255,0.12)'],
         grass: ['#5c9462', '#3f6e46', 'rgba(255,255,255,0.1)'],
       };
+      if (A.cfg.bg === 'range') { this.rangeBackground(); return; }
       const [a, b, line] = themes[A.cfg.bg] || themes.dark;
       const grad = ctx.createLinearGradient(0, 0, 0, H);
       grad.addColorStop(0, a); grad.addColorStop(1, b);
@@ -165,6 +196,44 @@
         if (p) { ctx.moveTo(0, Math.round(p.y) + 0.5); ctx.lineTo(W, Math.round(p.y) + 0.5); }
       }
       ctx.stroke();
+    }
+
+    /* 사격장: 어두운 벽과 원근감 있는 바닥, 수평선의 붉은 띠 */
+    rangeBackground() {
+      const { ctx, W, H, cx, focal: f } = this;
+      const hy = this.cy + f * Math.tan(rad(this.pitch));   // 눈높이(수평선)의 화면 y
+      const top = Math.max(0, Math.min(hy, H));
+      const sky = ctx.createLinearGradient(0, 0, 0, Math.max(1, hy));
+      sky.addColorStop(0, '#1b2a3a'); sky.addColorStop(1, '#3a4f63');
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, top);
+      if (hy < H) {
+        const floor = ctx.createLinearGradient(0, hy, 0, H);
+        floor.addColorStop(0, '#59636e'); floor.addColorStop(1, '#222831');
+        ctx.fillStyle = floor; ctx.fillRect(0, Math.max(0, hy), W, H - Math.max(0, hy));
+      }
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+      ctx.beginPath();
+      for (let az = -180; az < 180; az += 8) {      // 벽 패널 줄
+        const p = this.project(az, 0);
+        if (p) { ctx.moveTo(Math.round(p.x) + 0.5, 0); ctx.lineTo(Math.round(p.x) + 0.5, top); }
+      }
+      ctx.stroke();
+      if (hy < H) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+        ctx.beginPath();
+        for (const d of [2, 3, 4.5, 6.5, 9, 13, 20, 35]) {  // 바닥 가로줄 (눈높이 1.6m)
+          const y = this.cy - f * Math.tan(rad(-Math.atan(1.6 / d) * 180 / Math.PI - this.pitch));
+          if (y > hy && y < H) { ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(W, Math.round(y) + 0.5); }
+        }
+        for (let az = -90; az <= 90; az += 5) {       // 소실점으로 모이는 세로줄
+          const p = this.project(this.yaw + az, 0);
+          if (p) { ctx.moveTo(p.x, hy); ctx.lineTo(cx + (p.x - cx) * 4, H); }
+        }
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,70,85,0.5)';
+      ctx.fillRect(0, Math.round(hy) - 1, W, 2);
     }
 
     drawBot(t) {
@@ -230,6 +299,78 @@
         }
         ctx.stroke();
       }
+      this.drawPops(ctx);
+      this.drawWeapon(ctx);
+      this.drawFeed(ctx);
+    }
+
+    /* 오른쪽 아래 무기: 쏘면 반동, 재장전하면 아래로 내려간다. 탄약 숫자도 같이 */
+    drawWeapon(ctx) {
+      const w = A.weapon;
+      if (!w) return;
+      const { W, H } = this, k = H / 1080;
+      const img = w.img && w.img.complete && w.img.naturalWidth ? w.img : null;
+      if (img) {
+        const tw = Math.min(W * 0.34, 640 * k), th = tw * img.naturalHeight / img.naturalWidth;
+        const dip = this.reloading > 0 && w.reload ? Math.sin(Math.PI * (1 - this.reloading / w.reload)) : 0;
+        ctx.save();
+        ctx.translate(W - tw * 0.52 - this.kick * 28 * k, H - th * 0.3 + this.kick * 24 * k + dip * 170 * k);
+        ctx.rotate(rad(-8 - this.kick * 4 + dip * 12));
+        ctx.drawImage(img, -tw / 2, -th / 2, tw, th);
+        ctx.restore();
+      }
+      const font = (px, wt) => wt + ' ' + Math.round(px * k) + 'px Rajdhani, system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 6;
+      if (this.gun()) {
+        ctx.font = font(64, 700); ctx.fillStyle = 'rgba(255,255,255,.95)';
+        ctx.fillText(this.reloading > 0 ? '재장전' : String(this.ammo), W - 36 * k, H - 70 * k);
+        ctx.font = font(22, 600); ctx.fillStyle = 'rgba(255,255,255,.7)';
+        ctx.fillText('/ ' + w.mag, W - 36 * k, H - 40 * k);
+      }
+      ctx.font = font(18, 600); ctx.fillStyle = 'rgba(255,70,85,.95)';
+      ctx.fillText(w.title || '', W - 36 * k, H - 16 * k);
+      ctx.shadowBlur = 0;
+    }
+
+    /* 오른쪽 위 킬로그 (발로란트처럼 내 이름·무기·상대) */
+    drawFeed(ctx) {
+      const { W } = this, k = this.H / 1080, w = A.weapon;
+      const img = w && w.img && w.img.complete && w.img.naturalWidth ? w.img : null;
+      let y = 90 * k;
+      ctx.font = '600 ' + Math.round(20 * k) + 'px Rajdhani, system-ui, sans-serif';
+      ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      for (const f of this.feed) {
+        const rowH = 34 * k, iw = img ? 96 * k : 0;
+        const ih = img ? Math.min(iw * img.naturalHeight / img.naturalWidth, rowH - 6 * k) : 0;
+        const tw = 120 * k + iw + (f.head ? 70 * k : 0), x = W - 24 * k - tw;
+        ctx.globalAlpha = Math.min(1, f.t * 2);
+        ctx.fillStyle = 'rgba(15,25,35,.82)'; ctx.fillRect(x, y, tw, rowH);
+        ctx.fillStyle = '#ff4655'; ctx.fillRect(x, y, 3 * k, rowH);
+        ctx.fillStyle = '#ece8e1';
+        let px = x + 12 * k;
+        ctx.fillText('나', px, y + rowH / 2); px += 26 * k;
+        if (img) { ctx.drawImage(img, px, y + (rowH - ih) / 2, iw, ih); px += iw + 8 * k; }
+        ctx.fillText('봇', px, y + rowH / 2); px += 34 * k;
+        if (f.head) { ctx.fillStyle = '#ff4655'; ctx.fillText('헤드샷', px, y + rowH / 2); }
+        y += rowH + 6 * k;
+      }
+      ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
+    }
+
+    /* 맞힌 곳에서 떠오르는 피해량 숫자 */
+    drawPops(ctx) {
+      const k = this.H / 1080;
+      ctx.textAlign = 'center';
+      for (const p of this.pops) {
+        const rise = (0.7 - p.t) * 60 * k;
+        ctx.globalAlpha = Math.min(1, p.t * 3);
+        ctx.font = '700 ' + Math.round((p.head ? 30 : 22) * k) + 'px Rajdhani, system-ui, sans-serif';
+        ctx.fillStyle = p.head ? '#ff4655' : '#ffffff';
+        ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 3;
+        ctx.strokeText(p.text, p.x, p.y - rise); ctx.fillText(p.text, p.x, p.y - rise);
+      }
+      ctx.globalAlpha = 1;
     }
   }
 
