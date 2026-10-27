@@ -254,6 +254,16 @@
   });
   window.addEventListener('resize', () => { game.resize(); if (state === 'menu') drawPreview(); });
 
+  /* 주소 뒤에 #code=조준선코드 가 붙어 오면(디스코드 봇 링크) 그 조준선으로 바꿔 시작한다 */
+  try {
+    const m = /[#&]code=([^&]+)/.exec(location.hash);
+    if (m) {
+      const text = decodeURIComponent(m[1]);
+      A.crosshair.parse(text);
+      cfg.crosshair = text; A.save();
+    }
+  } catch (e) { /* 잘못된 코드는 무시하고 저장된 조준선을 쓴다 */ }
+
   initSettings();
   renderModes();
   initSkins();
