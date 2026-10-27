@@ -60,13 +60,15 @@
     if (!manifest) manifest = fetch('local/manifest.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
     return (await manifest)[id] || null;
   };
+  /* decode() 는 숨겨진 탭에서 멈출 수 있어 load/error 이벤트로 기다린다 */
+  const ready = (img) => new Promise((ok, no) => { if (img.complete && img.naturalWidth) ok(); else { img.onload = () => ok(); img.onerror = () => no(new Error('image')); } });
   const loadImage = async (id) => {
     try {
       const l = await localAsset(id);
       if (l && l.gun) {
         const img = new Image();
         img.src = 'local/' + encodeURIComponent(l.gun);
-        await img.decode();
+        await ready(img);
         return img;
       }
     } catch (e) { /* 폴더 파일이 없으면 올린 파일로 */ }
@@ -75,14 +77,14 @@
       if (!blob) return null;
       const img = new Image();
       img.src = URL.createObjectURL(blob);
-      await img.decode();
+      await ready(img);
       return img;
     } catch (e) { return null; }
   };
   const saveImage = async (id, file) => {
     const url = URL.createObjectURL(file), img = new Image();
     img.src = url;
-    await img.decode();  // 이미지가 아니면 여기서 던진다
+    await ready(img);  // 이미지가 아니면 여기서 던진다
     await run('readwrite', (s) => s.put(file, id));
     return img;
   };
