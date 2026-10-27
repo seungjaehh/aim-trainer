@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>에임 트레이너</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<main id="menu">
+  <header>
+    <h1>🎯 에임 트레이너</h1>
+    <p>발로란트 조준선 코드를 붙여넣고, 대기샷·플릭샷·트래킹 등 에임 연습을 해요.</p>
+  </header>
+
+  <div class="layout">
+    <section class="modes" id="modes" aria-label="연습 모드"></section>
+
+    <aside class="settings">
+      <details open>
+        <summary>🎯 조준선</summary>
+        <label>조준선 코드 (발로란트 → 설정 → 조준선 → 가져오기)
+          <textarea id="code" rows="3" spellcheck="false" placeholder="0;P;c;5;h;0;0l;4;0o;2;0a;1;0f;0;1b;0"></textarea>
+        </label>
+        <div class="row"><button id="applyCode" class="primary">적용</button><span id="codeMsg" class="msg"></span></div>
+        <canvas id="preview" width="220" height="140"></canvas>
+        <label>화면 배율 <input id="chScale" type="number" min="0.5" max="4" step="0.25"><small>1080p 에서는 1</small></label>
+      </details>
+
+      <details>
+        <summary>🖱️ 감도·시야</summary>
+        <label>감도 (발로란트) <input id="sens" type="number" min="0.05" max="10" step="0.01"></label>
+        <label>DPI <input id="dpi" type="number" min="100" max="32000" step="50"></label>
+        <p class="hint" id="cm360"></p>
+        <label>가로 시야각 <input id="fov" type="number" min="70" max="120" step="1"><small>발로란트 기본 103</small></label>
+      </details>
+
+      <details>
+        <summary>🔊 킬 사운드</summary>
+        <label>킬 사운드 <select id="kill"></select></label>
+        <label>타격 소리 <select id="hit"></select></label>
+        <label>볼륨 <input id="volume" type="range" min="0" max="1" step="0.05"></label>
+        <label>내 소리 파일 <input id="soundFile" type="file" accept="audio/*"></label>
+        <div class="row"><button id="testSound">들어보기</button><span id="soundMsg" class="msg"></span></div>
+      </details>
+
+      <details>
+        <summary>🔫 무기 스킨</summary>
+        <label>무기 <select id="weapon"><option>불러오는 중…</option></select></label>
+        <label>스킨 <select id="skin"></select></label>
+        <img id="skinPreview" alt="" hidden>
+        <p class="hint" id="skinMsg"></p>
+      </details>
+
+      <details>
+        <summary>⚙️ 연습 설정</summary>
+        <label>연습 시간
+          <select id="duration"><option value="30">30초</option><option value="60">60초</option><option value="120">120초</option></select>
+        </label>
+        <label>타겟 크기 <input id="targetSize" type="range" min="0.5" max="2" step="0.1"></label>
+        <label>배경 <select id="bg"><option value="dark">어두운 방</option><option value="wall">벽</option><option value="sky">하늘</option><option value="grass">풀</option></select></label>
+        <label class="check"><input id="guide" type="checkbox"> 대기샷 머리 높이 가이드 표시</label>
+      </details>
+    </aside>
+  </div>
+</main>
+
+<div id="hudWeapon" hidden><img id="weaponImg" alt=""></div>
+
+<div id="overlay" hidden>
+  <div class="card" id="overlayCard"></div>
+</div>
+
+<script src="js/settings.js"></script>
+<script src="js/crosshair.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/skins.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/modes.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
