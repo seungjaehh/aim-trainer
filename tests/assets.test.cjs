@@ -71,15 +71,15 @@ test('switching to Gaia replaces both its first-person image and recorded sound'
   assert.equal(played[0], hash(fs.readFileSync(path.join(root, 'assets/skins/gaia_vandal_1.wav'))));
 });
 
-test('Gaia plays its three recorded kill stages, holds the last, and resets after a miss', async () => {
+test('Gaia plays all five recorded kill stages, holds the fifth, and resets after a miss', async () => {
   const { Aim, played } = publicBrowser();
   assert.equal(await Aim.audio.loadSkinSound(gaia), true);
   const expected = manifest[gaia].kills.map((name) => hash(fs.readFileSync(path.join(root, 'assets/skins', name))));
-  assert.equal(expected.length, 3);
-  for (let i = 0; i < 5; i++) Aim.audio.kill(true);
-  assert.deepEqual(played, [...expected, expected[2], expected[2]]);
+  assert.equal(expected.length, 5);
+  for (let i = 0; i < 7; i++) Aim.audio.kill(true);
+  assert.deepEqual(played, [...expected, expected[4], expected[4]]);
   Aim.audio.resetStreak(); Aim.audio.kill(true);
-  assert.equal(played[5], expected[0]);
+  assert.equal(played[7], expected[0]);
   Aim.audio.kill(false); Aim.audio.kill(true);
-  assert.deepEqual(played.slice(6), [expected[0], expected[0]]);
+  assert.deepEqual(played.slice(8), [expected[0], expected[0]]);
 });
