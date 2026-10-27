@@ -110,7 +110,7 @@
     }
 
     /* 탄창·연사 속도가 있는 총을 골랐으면 그 총 (칼 등은 null) */
-    gun() { const w = A.weapon; return w && w.mag ? w : null; }
+    gun() { const w = A.weapon; return w && w.rate ? w : null; }
 
     reload() {
       const w = this.gun();
@@ -326,12 +326,6 @@
       const font = (px, wt) => wt + ' ' + Math.round(px * k) + 'px Rajdhani, system-ui, sans-serif';
       ctx.textAlign = 'right';
       ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 6;
-      if (this.gun()) {
-        ctx.font = font(64, 700); ctx.fillStyle = 'rgba(255,255,255,.95)';
-        ctx.fillText(this.reloading > 0 ? '재장전' : String(this.ammo), W - 36 * k, H - 70 * k);
-        ctx.font = font(22, 600); ctx.fillStyle = 'rgba(255,255,255,.7)';
-        ctx.fillText('/ ' + w.mag, W - 36 * k, H - 40 * k);
-      }
       ctx.font = font(18, 600); ctx.fillStyle = 'rgba(255,70,85,.95)';
       ctx.fillText(w.title || '', W - 36 * k, H - 16 * k);
       ctx.shadowBlur = 0;

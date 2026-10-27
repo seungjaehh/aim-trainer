@@ -32,18 +32,14 @@
       <details>
         <summary>🖱️ 감도·시야</summary>
         <label>감도 (발로란트) <input id="sens" type="number" min="0.05" max="10" step="0.01"></label>
-        <label>DPI <input id="dpi" type="number" min="100" max="32000" step="50"></label>
-        <p class="hint" id="cm360"></p>
         <label>가로 시야각 <input id="fov" type="number" min="70" max="120" step="1"><small>발로란트 기본 103</small></label>
       </details>
 
       <details>
-        <summary>🔊 킬 사운드</summary>
-        <label>킬 사운드 <select id="kill"></select></label>
+        <summary>🔊 소리</summary>
         <label>타격 소리 <select id="hit"></select></label>
         <label>볼륨 <input id="volume" type="range" min="0" max="1" step="0.05"></label>
-        <label>내 소리 파일 <input id="soundFile" type="file" accept="audio/*"></label>
-        <div class="row"><button id="testSound">들어보기</button><span id="soundMsg" class="msg"></span></div>
+        <div class="row"><button id="testSound">킬 소리 들어보기</button></div>
       </details>
 
       <details>
@@ -64,7 +60,6 @@
         <label>연습 시간
           <select id="duration"><option value="30">30초</option><option value="60">60초</option><option value="120">120초</option></select>
         </label>
-        <label>타겟 크기 <input id="targetSize" type="range" min="0.5" max="2" step="0.1"></label>
         <label>배경 <select id="bg"><option value="dark">어두운 방</option><option value="wall">벽</option><option value="sky">하늘</option><option value="grass">풀</option></select></label>
         <label class="check"><input id="guide" type="checkbox"> 대기샷 머리 높이 가이드 표시</label>
       </details>

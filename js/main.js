@@ -48,10 +48,6 @@
       A.save(); if (after) after();
     });
   }
-  function cm360() {
-    const counts = 360 / (0.07 * cfg.sens);
-    $('cm360').textContent = '360° 회전 = ' + ((counts / cfg.dpi) * 2.54).toFixed(1) + 'cm (eDPI ' + Math.round(cfg.sens * cfg.dpi) + ')';
-  }
   function fillOptions(sel, list, value) {
     sel.innerHTML = '';
     for (const [v, label] of list) sel.add(new Option(label, v));
@@ -63,33 +59,17 @@
     $('applyCode').onclick = () => applyCode($('code').value);
     $('code').addEventListener('input', () => { $('codeMsg').textContent = ''; });
     bindNumber('chScale', 'chScale', drawPreview);
-    bindNumber('sens', 'sens', cm360);
-    bindNumber('dpi', 'dpi', cm360);
+    bindNumber('sens', 'sens');
     bindNumber('fov', 'fov');
-    cm360();
+    cfg.kill = 'skin'; cfg.targetSize = 1;  // 킬 소리는 스킨 것, 타겟 크기는 고정
 
-    fillOptions($('kill'), A.audio.lists.kill, cfg.kill);
     fillOptions($('hit'), A.audio.lists.hit, cfg.hit);
-    bindSelect('kill', 'kill'); bindSelect('hit', 'hit');
+    bindSelect('hit', 'hit');
     $('volume').value = cfg.volume;
     $('volume').addEventListener('input', () => { cfg.volume = parseFloat($('volume').value); A.save(); });
     $('testSound').onclick = () => A.audio.preview();
-    $('soundFile').addEventListener('change', async (e) => {
-      const f = e.target.files[0];
-      if (!f) return;
-      try {
-        await A.audio.loadFile(f);
-        cfg.kill = 'custom'; $('kill').value = 'custom'; A.save();
-        $('soundMsg').textContent = f.name + ' 적용 (새로고침하면 다시 골라야 해요)'; $('soundMsg').className = 'msg ok';
-        A.audio.preview();
-      } catch (err) {
-        $('soundMsg').textContent = '이 파일은 재생할 수 없어요'; $('soundMsg').className = 'msg err';
-      }
-    });
 
     bindSelect('duration', 'duration');
-    $('targetSize').value = cfg.targetSize;
-    $('targetSize').addEventListener('input', () => { cfg.targetSize = parseFloat($('targetSize').value); A.save(); });
     bindSelect('bg', 'bg', drawPreview);
     $('guide').checked = cfg.guide;
     $('guide').addEventListener('change', () => { cfg.guide = $('guide').checked; A.save(); });
@@ -109,10 +89,9 @@
       $('skinSoundMsg').textContent = !s ? '' : has ? (A.skins.isLocal ? '폴더(local/)의 파일을 쓰는 중이에요' : '올린 소리를 쓰는 중이에요 (이 브라우저에만 저장돼요)') : '파일을 올리지 않으면 이 스킨에 맞춘 합성음이 나요';
     });
     if (s) {
-      if (cfg.kill === 'valo') { cfg.kill = 'skin'; $('kill').value = 'skin'; A.save(); }
       const img = new Image();
       img.src = s.icon;
-      A.weapon = { feedImg: img, title: w.name + ' · ' + s.name, img, mag: w.stats && w.stats.mag, rate: w.stats && w.stats.rate, reload: w.stats && w.stats.reload };
+      A.weapon = { feedImg: img, title: w.name + ' · ' + s.name, img, rate: w.stats && w.stats.rate, reload: w.stats && w.stats.reload };
       A.skins.loadImage(s.id).then((own) => {
         if (own && A.weapon && A.weapon.feedImg === img) { A.weapon.img = own; A.weapon.fp = true; }
         $('skinImgClear').hidden = !own;
@@ -142,7 +121,6 @@
       if (!f || !cfg.skin) { $('skinSoundMsg').textContent = '스킨을 먼저 골라 주세요'; return; }
       try {
         await A.audio.saveSkinSound(cfg.skin, f);
-        cfg.kill = 'skin'; $('kill').value = 'skin'; A.save();
         $('skinSoundClear').hidden = false;
         $('skinSoundMsg').textContent = f.name + ' 적용'; $('skinSoundMsg').className = 'msg ok';
         A.audio.preview();
@@ -304,7 +282,6 @@
     if (!document.pointerLockElement && (state === 'run' || state === 'countdown')) pause();
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key.toLowerCase() === 'r' && state === 'run') game.reload();
     if (e.key.toLowerCase() === 't' && state === 'run') start(current);
   });
   window.addEventListener('resize', () => { game.resize(); if (state === 'menu') drawPreview(); });

@@ -3,11 +3,7 @@
   let weapons = [];
   /* 연습에 쓸 무기·스킨 (무기 순서 그대로). [스킨 uuid, 킬사운드 이름] */
   const SET = [
-    ['ee8e8d15-496b-07ac-e5f6-8fae5d4c7b1a', [['d67b929f-4431-61c0-286e-3ebf3d11c4af', 'recon']]],                       // 팬텀
     ['9c82e19d-4575-0200-1a81-3eacf00cf872', [['9bf19b77-4b33-7203-9f2c-16932970622f', 'champions'], ['000ad7b1-44b0-9345-ea47-9cbd7dcdbb38', 'gaia'], ['d8d5d7a1-4d81-8560-54bc-0692ab40f69b', 'oni']]],  // 밴달
-    ['e336c6b8-418d-9340-d77f-7a9e4cfe0702', [['bfd9e773-4376-1f6a-98f2-dc93f0c0607c', 'singularity'], ['83778c03-45a3-67a2-3c89-6b8598327d58', 'ion']]],  // 셰리프
-    ['4ade7faa-4cf1-8376-95ef-39884480959b', [['7122d78b-4e60-eb4d-5f65-738d7c1ce9ae', 'sovereign'], ['db348da1-49f2-0bad-b70a-e4ade9d31655', 'reaver'], ['e5410554-4501-16c8-0382-13b91db12286', 'cyrax']]],  // 가디언
-    ['c4883e50-4494-202c-3ec3-6b8a9284f00b', [['fb9ff2b0-4d71-d53c-364e-fe98fb5a2411', 'oni'], ['5211efa8-4efd-09bb-6cee-72b86a8a5972', 'sovereign']]],  // 마샬
   ];
   async function load() {
     const [res, themeRes] = await Promise.all([
