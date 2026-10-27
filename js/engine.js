@@ -173,7 +173,7 @@
       if (this.cool > 0 || this.reloading > 0) return;
       if (w && this.ammo <= 0) { this.reload(); return; }
       if (w) this.ammo--;
-      if (w && this.muzzle) this.tracers.push({ t: 0.12, life: 0.12, x1: this.muzzle.x, y1: this.muzzle.y, x2: this.cx, y2: this.cy });
+      if (w && this.muzzle) this.tracers.push({ t: 0.075, life: 0.075, x1: this.muzzle.x, y1: this.muzzle.y, x2: this.cx, y2: this.cy });
       this.cool = w ? Math.max(0.05, 1 / w.rate) : 0.09;
       this.kick = Math.min(1, this.kick + 0.7);
       this.stats.shots++;
@@ -414,8 +414,6 @@
       }
       if (!wallDrawn) this.drawWall();
       if (this.mode.draw) this.mode.draw(this, ctx);
-      // 조준선
-      A.crosshair.draw(ctx, this.cx, this.cy, A.crossData, A.cfg.chScale);
       // 히트마커
       for (const m of this.marks) {
         const a = Math.min(1, m.t * 6), n = m.kill ? 12 : 8, g = 5;
@@ -430,6 +428,7 @@
       this.drawPops(ctx);
       this.drawWeapon(ctx);
       this.drawTracers(ctx);
+      A.crosshair.draw(ctx, this.cx, this.cy, A.crossData, A.cfg.chScale);
       this.drawFeed(ctx);
       this.drawOrientation(ctx);
     }
@@ -501,24 +500,22 @@
       ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
     }
 
-    /* 맞힌 곳에서 떠오르는 피해량 숫자 */
-    /* 총알 궤적: 발로란트처럼 총구에서 조준점으로 빠르게 날아가는 짧고 밝은 노란 줄 */
+    /* 발사 순간 총구와 조준점을 잇는 직선 전체를 짧게 표시한 뒤 밝기만 줄인다. */
     drawTracers(ctx) {
       const k = this.H / 1080;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.lineCap = 'round';
       for (const m of this.tracers) {
-        const p = 1 - m.t / m.life, head = Math.min(1, p * 1.25), tail = Math.max(0, head - 0.3);
-        if (tail >= 1) continue;
+        if (m.t <= 0) continue;
+        const alpha = Math.min(1, m.t / m.life);
         // 반동 중인 현재 총구와 맞춰, 위쪽 가늠쇠가 아닌 실제 총열 구멍에서 시작한다.
         const origin = this.muzzle || { x: m.x1, y: m.y1 };
-        const dx = m.x2 - origin.x, dy = m.y2 - origin.y;
-        const ax = origin.x + dx * tail, ay = origin.y + dy * tail, bx = origin.x + dx * head, by = origin.y + dy * head;
-        const g = ctx.createLinearGradient(ax, ay, bx, by);
-        g.addColorStop(0, 'rgba(255,200,60,0.22)'); g.addColorStop(1, 'rgba(255,245,190,' + (0.95 * (1 - p * 0.6)) + ')');
-        ctx.strokeStyle = g; ctx.lineWidth = Math.max(2, 4.8 * k * (1 - p * 0.5));
-        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        const g = ctx.createLinearGradient(origin.x, origin.y, m.x2, m.y2);
+        g.addColorStop(0, 'rgba(255,210,100,0.7)'); g.addColorStop(1, 'rgba(255,245,205,0.95)');
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = g; ctx.lineWidth = Math.max(2, 4.8 * k * (.8 + .2 * alpha));
+        ctx.beginPath(); ctx.moveTo(origin.x, origin.y); ctx.lineTo(m.x2, m.y2); ctx.stroke();
       }
       ctx.restore();
     }
