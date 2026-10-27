@@ -68,7 +68,7 @@ test('switching to Gaia replaces both its first-person image and recorded sound'
   assert.equal((await Aim.skins.loadImage(gaia)).url, 'assets/skins/gaia_vandal_gun.png');
   assert.equal(await Aim.audio.loadSkinSound(gaia), true);
   Aim.audio.kill(true);
-  assert.equal(played[0], hash(fs.readFileSync(path.join(root, 'assets/skins/gaia_vandal_1.wav'))));
+  assert.equal(played[0], hash(fs.readFileSync(path.join(root, 'assets/skins', manifest[gaia].kills[0]))));
 });
 
 test('Gaia plays all five recorded kill stages, holds the fifth, and resets after a miss', async () => {
