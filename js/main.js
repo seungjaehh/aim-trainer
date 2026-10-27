@@ -77,6 +77,9 @@
     $('testSound').onclick = () => A.audio.preview();
 
     bindSelect('duration', 'duration');
+    fillOptions($('holdSpeed'), [['random', '랜덤 · 칼 달리기부터 앉기까지']].concat(
+      A.holdSpeeds.map((p) => [p.id, p.label + ' · ' + (p.crouch ? '약 ' : '') + p.speed.toFixed(2) + ' m/s'])), cfg.holdSpeed);
+    bindSelect('holdSpeed', 'holdSpeed');
     bindSelect('bg', 'bg', drawPreview);
     $('guide').checked = cfg.guide;
     $('guide').addEventListener('change', () => { cfg.guide = $('guide').checked; A.save(); });

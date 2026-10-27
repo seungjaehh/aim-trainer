@@ -3,7 +3,7 @@
   const DEFAULTS = {
     sens: 0.4, dpi: 800, fov: 103,
     crosshair: '0;P;c;5;h;0;0l;4;0o;2;0a;1;0f;0;1b;0',
-    chScale: 1, targetSize: 1, duration: 60, bg: 'range', guide: true,
+    chScale: 1, targetSize: 1, duration: 60, bg: 'range', guide: true, holdSpeed: 'random',
     kill: 'skin', hit: 'tick', volume: 0.6,
     weapon: '', skin: '', best: {},
   };

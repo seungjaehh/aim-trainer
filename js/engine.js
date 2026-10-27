@@ -83,7 +83,7 @@
     targetPosition(t) {
       // 봇의 좌우 이동은 같은 거리의 레인 위에서 이뤄져야 엄폐물 앞뒤를 뚫고 나오지 않는다.
       if (t.kind === 'bot') return { x: Math.tan(rad(t.az)) * t.d,
-        y: this.eyeHeight + Math.tan(rad(t.el)) * t.d, z: t.d };
+        y: this.eyeHeight + Math.tan(rad(t.el)) * t.d - (t.crouch || 0), z: t.d };
       const p = this.position(t.az, t.el, t.d);
       if (t.kind === 'orb') p.y = Math.max(t.r + 0.16, p.y);
       return p;
@@ -260,7 +260,11 @@
       // 각 봇은 카메라 위치를 향하는 수직 평면. 시점을 위아래로 돌려도 발은 바닥에 고정된다.
       const right = { x: Math.cos(rad(t.az)), z: -Math.sin(rad(t.az)) };
       const points = [[x0 - grow, y0 - grow], [x1 + grow, y0 - grow], [x1 + grow, y1 + grow], [x0 - grow, y1 + grow]]
-        .map(([x, y]) => this.worldPoint(p.x + right.x * x, p.y - y, p.z + right.z * x));
+        .map(([x, y]) => {
+          // 앉기는 머리 크기를 줄이지 않고 다리를 접어 발이 계속 바닥에 닿게 한다.
+          const bodyY = y > .8 ? y - (t.crouch || 0) * (y - .8) / .8 : y;
+          return this.worldPoint(p.x + right.x * x, p.y - bodyY, p.z + right.z * x);
+        });
       return points.every(Boolean) ? points : null;
     }
 

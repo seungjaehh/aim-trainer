@@ -13,6 +13,14 @@
   }
 
   const modes = [];
+  // 일반 이동 기준(m/s). 달리기·걷기와 앉기 약 1.90m/s는 리플레이 실측 자료를 참고한다.
+  // https://github.com/yakisoba0728/vrfkit/blob/main/docs/DATA.md
+  const holdSpeeds = [
+    { id: 'knife', label: '칼 달리기', speed: 6.75 },
+    { id: 'rifle', label: '밴달 달리기', speed: 5.40 },
+    { id: 'walk', label: '밴달 걷기', speed: 3.24 },
+    { id: 'crouch', label: '앉기', speed: 1.90, crouch: .19 },
+  ];
 
   /* ---- 그리드샷: 3x3 격자 중 3개가 켜진다 ---- */
   modes.push({
@@ -96,7 +104,7 @@
 
   /* ---- 대기샷: 벽 뒤에서 튀어나오는 봇을 각도를 잡고 기다렸다 쏜다 ---- */
   modes.push({
-    id: 'hold', icon: '▌', name: '대기샷', desc: '벽 모서리에 조준선을 두고 기다리세요. 봇이 멈추지 않고 쭉 지나가요. 나오는 타이밍에 머리를 맞히는 연습이에요.',
+    id: 'hold', icon: '▌', name: '대기샷', desc: '칼 달리기부터 앉기까지, 실제 이동 속도를 기준으로 봇이 벽 뒤에서 나와요. 모서리에 조준선을 두고 머리를 맞혀 보세요.',
     setup(g) {
       const side = Math.random() < 0.5 ? 1 : -1;
       g.wall = { az: 0, side, d: 12 };
@@ -107,11 +115,17 @@
     update(g, dt) {
       const m = g.m, b = m.bot;
       if (m.phase === 'wait' && g.t >= m.until) {
-        m.bot = g.bot(m.side * 2.2, 0, 12.5);
-        m.speed = rand(9, 20);  // 멈추지 않고 일정한 속도로 쭉 지나간다
-        m.phase = 'out'; m.peekAt = g.t + 0.04;
+        m.profile = holdSpeeds.find((p) => p.id === A.cfg.holdSpeed) || pick(holdSpeeds);
+        m.speed = m.profile.speed;
+        m.x = m.side * .65;
+        m.bot = g.bot(Math.atan2(m.x, 12.5) * 180 / Math.PI, 0, 12.5);
+        m.bot.crouch = m.profile.crouch || 0;
+        // 벽 너머에서 머리의 앞쪽 가장자리가 보이기 시작하는 시점을 속도로 계산한다.
+        m.phase = 'out'; m.peekAt = g.t + (.65 - .085) / m.speed;
       } else if (m.phase === 'out') {
-        b.az -= m.side * m.speed * dt;
+        // 각도/초가 아닌 월드의 m/s로 이동시켜 거리·화면 위치에 따라 속도가 달라지지 않게 한다.
+        m.x -= m.side * m.speed * dt;
+        b.az = Math.atan2(m.x, b.d) * 180 / Math.PI;
         if (b.az * m.side <= -m.reach) {
           g.remove(b); m.bot = null; m.phase = 'wait'; m.until = g.t + rand(0.9, 2.6); m.rounds++;
         }
@@ -119,8 +133,15 @@
     },
     onKill(g) {
       const m = g.m;
-      g.stats.extra.reactions.push(Math.round((g.t - m.peekAt) * 1000));
+      g.stats.extra.reactions.push(Math.max(0, Math.round((g.t - m.peekAt) * 1000)));
       m.bot = null; m.phase = 'wait'; m.until = g.t + rand(0.9, 2.6); m.rounds++;
+    },
+    draw(g, ctx) {
+      const k = Math.max(1, g.H / 1080), m = g.m;
+      ctx.save(); ctx.textAlign = 'left'; ctx.fillStyle = '#cbd8db';
+      ctx.font = '500 ' + Math.round(15 * k) + 'px system-ui, sans-serif';
+      ctx.fillText(m.phase === 'out' ? m.profile.label + ' · ' + m.speed.toFixed(2) + ' m/s' : '대기샷 · 다음 봇 대기', 24*k, 104*k);
+      ctx.restore();
     },
     summary(g) {
       const r = g.stats.extra.reactions;
@@ -190,4 +211,5 @@
   });
 
   A.modes = modes;
+  A.holdSpeeds = holdSpeeds;
 })(window.Aim = window.Aim || {});

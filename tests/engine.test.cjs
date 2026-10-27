@@ -87,3 +87,31 @@ test('orbs cannot intersect the floor and cover respects its finite height', () 
     close(g.targetPosition(bot).z, 13);
   }
 });
+
+test('hold bots move at the chosen meters per second on either side of cover', () => {
+  const hold = Aim.modes.find((m) => m.id === 'hold');
+  for (const profile of Aim.holdSpeeds) for (const side of [-1,1]) {
+    Aim.cfg.holdSpeed = profile.id;
+    const g = game(); g.reset(hold); g.m.side = side; g.wall.side = side;
+    g.t = 3; g.update(0);
+    const start = g.targetPosition(g.m.bot), peekAt = g.m.peekAt;
+    close(peekAt, 3 + (.65-.085)/profile.speed);
+    for (let frame = 0; frame < 10; frame++) g.update(.02);
+    const end = g.targetPosition(g.m.bot);
+    close(Math.abs(end.x-start.x), profile.speed*.2);
+    close(end.z, 12.5);
+    close(g.m.speed, profile.speed);
+  }
+  delete Aim.cfg.holdSpeed;
+});
+
+test('crouching hold bots lower the head while both feet remain grounded', () => {
+  const g = game(); Aim.cfg.holdSpeed = 'crouch';
+  g.reset(Aim.modes.find((m) => m.id === 'hold')); g.t = 3; g.update(0);
+  const t = g.m.bot, p = g.targetPosition(t), radians = t.az*Math.PI/180;
+  assert.ok(p.y < g.eyeHeight);
+  const foot = g.botCorners(t, { r: [-.2,1.49,.2,1.6] })[2];
+  const floor = g.worldPoint(p.x + .2*Math.cos(radians), 0, p.z - .2*Math.sin(radians));
+  close(foot.x, floor.x); close(foot.y, floor.y);
+  delete Aim.cfg.holdSpeed;
+});

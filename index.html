@@ -60,6 +60,8 @@
           <select id="duration"><option value="30">30초</option><option value="60">60초</option><option value="120">120초</option></select>
         </label>
         <label>배경 <select id="bg"><option value="range">연습장 · 바닥과 거리 표시</option><option value="dark">어두운 연습장</option><option value="grid">기존 격자</option></select></label>
+        <label>대기샷 봇 속도 <select id="holdSpeed"></select></label>
+        <p class="hint">스킬·버프를 제외한 일반 이동 기준이에요. 앉기 속도는 약 1.90 m/s의 실측 근사치예요.</p>
         <p class="hint">조준선은 중앙에 고정돼요. 마우스를 위로 움직이면 위를 바라봐요. 바닥 거리선과 벽의 눈높이 띠로 시선을 확인하세요.</p>
         <label class="check"><input id="guide" type="checkbox"> 대기샷 머리 높이 가이드 표시</label>
       </details>
@@ -73,12 +75,12 @@
   <div class="card" id="overlayCard"></div>
 </div>
 
-<script src="js/settings.js"></script>
+<script src="js/settings.js?v=hold-speed-1"></script>
 <script src="js/crosshair.js"></script>
 <script src="js/audio.js?v=recorded-assets-1"></script>
 <script src="js/skins.js?v=muzzle-2"></script>
-<script src="js/engine.js?v=muzzle-2"></script>
-<script src="js/modes.js"></script>
-<script src="js/main.js?v=muzzle-2"></script>
+<script src="js/engine.js?v=hold-speed-1"></script>
+<script src="js/modes.js?v=hold-speed-1"></script>
+<script src="js/main.js?v=hold-speed-1"></script>
 </body>
 </html>
