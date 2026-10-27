@@ -42,5 +42,33 @@
     const w = weapon(weaponId);
     return w && w.skins.find((s) => s.id === skinId);
   };
-  A.skins = { load, find, weapon, all: () => weapons };
+  /* 스킨별로 내가 올린 1인칭 총 이미지. 이 브라우저(IndexedDB)에만 저장된다 */
+  const db = () => new Promise((ok, no) => {
+    const r = indexedDB.open('aimtrainer.skinimg', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('i');
+    r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+  });
+  const run = (mode, fn) => db().then((d) => new Promise((ok, no) => {
+    const q = fn(d.transaction('i', mode).objectStore('i'));
+    q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error);
+  }));
+  const loadImage = async (id) => {
+    try {
+      const blob = await run('readonly', (s) => s.get(id));
+      if (!blob) return null;
+      const img = new Image();
+      img.src = URL.createObjectURL(blob);
+      await img.decode();
+      return img;
+    } catch (e) { return null; }
+  };
+  const saveImage = async (id, file) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.src = url;
+    await img.decode();  // 이미지가 아니면 여기서 던진다
+    await run('readwrite', (s) => s.put(file, id));
+    return img;
+  };
+  const clearImage = async (id) => { try { await run('readwrite', (s) => s.delete(id)); } catch (e) { /* 없으면 그만 */ } };
+  A.skins = { load, find, weapon, all: () => weapons, loadImage, saveImage, clearImage };
 })(window.Aim = window.Aim || {});

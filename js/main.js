@@ -112,10 +112,31 @@
       if (cfg.kill === 'valo') { cfg.kill = 'skin'; $('kill').value = 'skin'; A.save(); }
       const img = new Image();
       img.src = s.icon;
-      A.weapon = { title: w.name + ' · ' + s.name, img, mag: w.stats && w.stats.mag, rate: w.stats && w.stats.rate, reload: w.stats && w.stats.reload };
+      A.weapon = { feedImg: img, title: w.name + ' · ' + s.name, img, mag: w.stats && w.stats.mag, rate: w.stats && w.stats.rate, reload: w.stats && w.stats.reload };
+      A.skins.loadImage(s.id).then((own) => {
+        if (own && A.weapon && A.weapon.feedImg === img) { A.weapon.img = own; A.weapon.fp = true; }
+        $('skinImgClear').hidden = !own;
+      });
     } else A.weapon = null;
   }
+  function initSkinImage() {
+    $('skinImg').addEventListener('change', async (e) => {
+      const f = e.target.files[0];
+      if (!f || !cfg.skin) { $('skinSoundMsg').textContent = '스킨을 먼저 골라 주세요'; return; }
+      try {
+        const img = await A.skins.saveImage(cfg.skin, f);
+        if (A.weapon) { A.weapon.img = img; A.weapon.fp = true; }
+        $('skinImgClear').hidden = false;
+        $('skinSoundMsg').textContent = f.name + ' 적용'; $('skinSoundMsg').className = 'msg ok';
+      } catch (err) {
+        $('skinSoundMsg').textContent = '이 파일은 이미지로 열 수 없어요'; $('skinSoundMsg').className = 'msg err';
+      }
+      e.target.value = '';
+    });
+    $('skinImgClear').onclick = async () => { await A.skins.clearImage(cfg.skin); $('skinImgClear').hidden = true; showSkin(); };
+  }
   function initSkinSound() {
+    initSkinImage();
     $('skinSound').addEventListener('change', async (e) => {
       const f = e.target.files[0];
       if (!f || !cfg.skin) { $('skinSoundMsg').textContent = '스킨을 먼저 골라 주세요'; return; }

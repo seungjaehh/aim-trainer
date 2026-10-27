@@ -310,7 +310,11 @@
       if (!w) return;
       const { W, H } = this, k = H / 1080;
       const img = w.img && w.img.complete && w.img.naturalWidth ? w.img : null;
-      if (img) {
+      if (img && w.fp) {  // 내가 올린 1인칭 총: 오른쪽 아래 모서리에 붙여 그린다
+        const tw = Math.min(W * 0.5, 900 * k), th = tw * img.naturalHeight / img.naturalWidth;
+        const dip = this.reloading > 0 && w.reload ? Math.sin(Math.PI * (1 - this.reloading / w.reload)) : 0;
+        ctx.drawImage(img, W - tw + 20 * k - this.kick * 26 * k, H - th + 30 * k + this.kick * 22 * k + dip * 260 * k, tw, th);
+      } else if (img) {
         const tw = Math.min(W * 0.34, 640 * k), th = tw * img.naturalHeight / img.naturalWidth;
         const dip = this.reloading > 0 && w.reload ? Math.sin(Math.PI * (1 - this.reloading / w.reload)) : 0;
         ctx.save();
@@ -336,7 +340,8 @@
     /* 오른쪽 위 킬로그 (발로란트처럼 내 이름·무기·상대) */
     drawFeed(ctx) {
       const { W } = this, k = this.H / 1080, w = A.weapon;
-      const img = w && w.img && w.img.complete && w.img.naturalWidth ? w.img : null;
+      const fi = w && (w.feedImg || w.img);
+      const img = fi && fi.complete && fi.naturalWidth ? fi : null;
       let y = 90 * k;
       ctx.font = '600 ' + Math.round(20 * k) + 'px Rajdhani, system-ui, sans-serif';
       ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
