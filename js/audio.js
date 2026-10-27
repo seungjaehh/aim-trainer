@@ -125,7 +125,9 @@
       skinBuf = null;
       if (!id) return false;
       try {
-        const data = await idbDo('readonly', (s) => s.get(id));
+        const l = A.skins && await A.skins.localAsset(id);
+        const data = l && l.kill ? await fetch('local/' + encodeURIComponent(l.kill)).then((r) => r.arrayBuffer())
+          : await idbDo('readonly', (s) => s.get(id));
         if (data) skinBuf = await audio().decodeAudioData(data.slice(0));
       } catch (e) { /* 저장소를 못 써도 합성음으로 동작 */ }
       return !!skinBuf;

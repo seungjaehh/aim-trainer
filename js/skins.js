@@ -52,7 +52,24 @@
     const q = fn(d.transaction('i', mode).objectStore('i'));
     q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error);
   }));
+  /* localhost 로 열었을 때만 local/manifest.json 을 읽어 폴더의 파일을 자동으로 쓴다 (공개 사이트에는 파일이 없다) */
+  const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
+  let manifest = null;
+  const localAsset = async (id) => {
+    if (!isLocal) return null;
+    if (!manifest) manifest = fetch('local/manifest.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+    return (await manifest)[id] || null;
+  };
   const loadImage = async (id) => {
+    try {
+      const l = await localAsset(id);
+      if (l && l.gun) {
+        const img = new Image();
+        img.src = 'local/' + encodeURIComponent(l.gun);
+        await img.decode();
+        return img;
+      }
+    } catch (e) { /* 폴더 파일이 없으면 올린 파일로 */ }
     try {
       const blob = await run('readonly', (s) => s.get(id));
       if (!blob) return null;
@@ -70,5 +87,5 @@
     return img;
   };
   const clearImage = async (id) => { try { await run('readwrite', (s) => s.delete(id)); } catch (e) { /* 없으면 그만 */ } };
-  A.skins = { load, find, weapon, all: () => weapons, loadImage, saveImage, clearImage };
+  A.skins = { load, find, weapon, all: () => weapons, loadImage, saveImage, clearImage, localAsset };
 })(window.Aim = window.Aim || {});
