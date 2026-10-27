@@ -96,26 +96,25 @@
 
   /* ---- 대기샷: 벽 뒤에서 튀어나오는 봇을 각도를 잡고 기다렸다 쏜다 ---- */
   modes.push({
-    id: 'hold', icon: '▌', name: '대기샷', desc: '벽 모서리에 조준선을 두고 기다리세요. 봇이 나오는 순간 머리를 쏘는 각도 잡기 연습이에요.',
+    id: 'hold', icon: '▌', name: '대기샷', desc: '벽 모서리에 조준선을 두고 기다리세요. 봇이 멈추지 않고 쭉 지나가요. 나오는 타이밍에 머리를 맞히는 연습이에요.',
     setup(g) {
       const side = Math.random() < 0.5 ? 1 : -1;
       g.wall = { az: 0, side, d: 12 };
       g.yaw = -side * 0.35; g.pitch = 0;
-      g.m = { queue: [], side, phase: 'wait', until: g.t + rand(1, 2.4), bot: null, peekAt: 0, rounds: 0, misses: 0 };
+      g.m = { queue: [], side, reach: 26, speed: 0, phase: 'wait', until: g.t + rand(1, 2.4), bot: null, peekAt: 0, rounds: 0, misses: 0 };
       g.stats.extra.reactions = [];
     },
     update(g, dt) {
       const m = g.m, b = m.bot;
       if (m.phase === 'wait' && g.t >= m.until) {
         m.bot = g.bot(m.side * 2.2, 0, 12.5);
+        m.speed = rand(9, 20);  // 멈추지 않고 일정한 속도로 쭉 지나간다
         m.phase = 'out'; m.peekAt = g.t + 0.04;
       } else if (m.phase === 'out') {
-        b.az -= m.side * 16 * dt;
-        if (b.az * m.side <= -1.1) { m.phase = 'hold'; m.until = g.t + rand(0.55, 1.1); }
-      } else if (m.phase === 'hold' && g.t >= m.until) m.phase = 'back';
-      else if (m.phase === 'back') {
-        b.az += m.side * 20 * dt;
-        if (b.az * m.side >= 2.2) { g.remove(b); m.bot = null; m.phase = 'wait'; m.until = g.t + rand(0.9, 2.6); m.rounds++; }
+        b.az -= m.side * m.speed * dt;
+        if (b.az * m.side <= -m.reach) {
+          g.remove(b); m.bot = null; m.phase = 'wait'; m.until = g.t + rand(0.9, 2.6); m.rounds++;
+        }
       }
     },
     onKill(g) {
