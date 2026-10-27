@@ -53,7 +53,7 @@
   const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
   let manifest = null;
   const localAsset = async (id) => {
-    const read = (base) => fetch(base + 'manifest.json').then((r) => r.ok ? r.json() : {}).then((entries) =>
+    const read = (base) => fetch(base + 'manifest.json?v=gaia-stacks-1').then((r) => r.ok ? r.json() : {}).then((entries) =>
       Object.fromEntries(Object.entries(entries).map(([key, value]) => [key, { ...value, base }]))).catch(() => ({}));
     if (!manifest) manifest = Promise.all([read('assets/skins/'), isLocal ? read('local/') : {}])
       .then(([bundled, local]) => ({ ...bundled, ...local }));

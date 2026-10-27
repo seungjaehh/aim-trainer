@@ -1,4 +1,4 @@
 {
-  "000ad7b1-44b0-9345-ea47-9cbd7dcdbb38": {"gun": "gaia_vandal_gun.png", "kill": "gaia_vandal_1.wav"},
+  "000ad7b1-44b0-9345-ea47-9cbd7dcdbb38": {"gun": "gaia_vandal_gun.png", "kills": ["gaia_vandal_1.wav", "gaia_vandal_2.wav", "gaia_vandal_3.wav"]},
   "9bf19b77-4b33-7203-9f2c-16932970622f": {"gun": "champions_vandal_gun.png", "kills": ["champions_vandal_k1.wav", "champions_vandal_k2.wav", "champions_vandal_k3.wav", "champions_vandal_k4.wav", "champions_vandal_k5.wav"]}
 }

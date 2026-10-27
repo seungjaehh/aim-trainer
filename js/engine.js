@@ -101,6 +101,7 @@
     }
 
     reset(mode) {
+      A.audio.resetStreak();
       this.mode = mode;
       this.targets = []; this.wall = null; this.marks = [];
       this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, ttk: 0, score: 0, extra: {} };
