@@ -1,7 +1,7 @@
 /* 킬·타격 사운드. 파일 없이 WebAudio 로 합성하고, 내 소리 파일을 올려 쓸 수도 있다.
    '스킨 맞춤' 은 고른 스킨의 시리즈(프라임·리버·오니…)마다 어울리는 소리를 합성해 낸다. */
 (function (A) {
-  let ctx = null, custom = null, skin = null, skinBufs = [], streak = 0;
+  let ctx = null, custom = null, skin = null, skinBufs = [], streak = 0, loadVersion = 0;
   const audio = () => (ctx = ctx || new (window.AudioContext || window.webkitAudioContext)());
 
   function tone(freq, start, dur, opts) {
@@ -122,6 +122,7 @@
   A.audio = {
     lists: LISTS,
     async loadSkinSound(id) {
+      const version = ++loadVersion;
       skinBufs = []; streak = 0;
       if (!id) return false;
       try {
@@ -129,11 +130,15 @@
         const names = l && (l.kills || (l.kill && [l.kill]));  // kills: 연속 헤드샷 1~5킬 순서
         const dec = async (data) => audio().decodeAudioData(data.slice(0));
         let bufs;
-        if (names && names.length) bufs = await Promise.all(names.map((n) => fetch('local/' + encodeURIComponent(n)).then((r) => r.arrayBuffer()).then(dec)));
+        if (names && names.length) bufs = await Promise.all(names.map((n) => fetch(A.skins.assetUrl(l, n)).then((r) => {
+          if (!r.ok) throw new Error('음원을 불러오지 못했어요: ' + r.status);
+          return r.arrayBuffer();
+        }).then(dec)));
         else { const data = await idbDo('readonly', (s) => s.get(id)); bufs = data ? [await dec(data)] : []; }
+        if (version !== loadVersion) return false;
         skinBufs = bufs;
       } catch (e) { /* 저장소를 못 써도 합성음으로 동작 */ }
-      return skinBufs.length > 0;
+      return version === loadVersion && skinBufs.length > 0;
     },
     async saveSkinSound(id, file) {
       const data = await file.arrayBuffer();

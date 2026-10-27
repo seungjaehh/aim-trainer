@@ -91,9 +91,12 @@
     $('hudWeapon').hidden = true;
     const w = s && A.skins.weapon(cfg.weapon);
     A.audio.setSkin(s || null);
-    A.audio.loadSkinSound(s && s.id).then((has) => {
-      $('skinSoundClear').hidden = !has;
-      $('skinSoundMsg').textContent = !s ? '' : has ? (A.skins.isLocal ? '폴더(local/)의 파일을 쓰는 중이에요' : '올린 소리를 쓰는 중이에요 (이 브라우저에만 저장돼요)') : '파일을 올리지 않으면 이 스킨에 맞춘 합성음이 나요';
+    Promise.all([A.audio.loadSkinSound(s && s.id), s && A.skins.localAsset(s.id)]).then(([has, asset]) => {
+      if (s && cfg.skin !== s.id) return;
+      $('skinSoundClear').hidden = !has || !!asset;
+      $('skinSoundMsg').textContent = !s ? '' : has ? (asset
+        ? '녹화한 킬사운드 적용 중' + (asset.kills ? ' · 연속 ' + asset.kills.length + '킬 단계' : '')
+        : '올린 소리를 쓰는 중이에요 (이 브라우저에만 저장돼요)') : '파일을 올리지 않으면 이 스킨에 맞춘 합성음이 나요';
     });
     if (s) {
       const img = new Image();
@@ -101,7 +104,7 @@
       A.weapon = { feedImg: img, title: w.name + ' · ' + s.name, img, rate: w.stats && w.stats.rate, reload: w.stats && w.stats.reload };
       A.skins.loadImage(s.id).then((own) => {
         if (own && A.weapon && A.weapon.feedImg === img) { A.weapon.img = own; A.weapon.fp = true; }
-        $('skinImgClear').hidden = !own;
+        if (cfg.skin === s.id) $('skinImgClear').hidden = !own || own.builtIn;
       });
     } else A.weapon = null;
   }

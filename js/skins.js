@@ -48,14 +48,17 @@
     const q = fn(d.transaction('i', mode).objectStore('i'));
     q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error);
   }));
-  /* localhost 로 열었을 때만 local/manifest.json 을 읽어 폴더의 파일을 자동으로 쓴다 (공개 사이트에는 파일이 없다) */
+  /* 녹화한 기본 이미지·음원은 공개판에도 포함한다. localhost에서는 local/ 파일로 덮어쓸 수 있다. */
   const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
   let manifest = null;
   const localAsset = async (id) => {
-    if (!isLocal) return null;
-    if (!manifest) manifest = fetch('local/manifest.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+    const read = (base) => fetch(base + 'manifest.json').then((r) => r.ok ? r.json() : {}).then((entries) =>
+      Object.fromEntries(Object.entries(entries).map(([key, value]) => [key, { ...value, base }]))).catch(() => ({}));
+    if (!manifest) manifest = Promise.all([read('assets/skins/'), isLocal ? read('local/') : {}])
+      .then(([bundled, local]) => ({ ...bundled, ...local }));
     return (await manifest)[id] || null;
   };
+  const assetUrl = (asset, name) => asset.base + encodeURIComponent(name);
   /* decode() 는 숨겨진 탭에서 멈출 수 있어 load/error 이벤트로 기다린다 */
   const ready = (img) => new Promise((ok, no) => { if (img.complete && img.naturalWidth) ok(); else { img.onload = () => ok(); img.onerror = () => no(new Error('image')); } });
   const loadImage = async (id) => {
@@ -63,7 +66,8 @@
       const l = await localAsset(id);
       if (l && l.gun) {
         const img = new Image();
-        img.src = 'local/' + encodeURIComponent(l.gun);
+        img.src = assetUrl(l, l.gun);
+        img.builtIn = true;
         await ready(img);
         return img;
       }
@@ -85,5 +89,5 @@
     return img;
   };
   const clearImage = async (id) => { try { await run('readwrite', (s) => s.delete(id)); } catch (e) { /* 없으면 그만 */ } };
-  A.skins = { load, find, weapon, all: () => weapons, loadImage, saveImage, clearImage, localAsset, isLocal };
+  A.skins = { load, find, weapon, all: () => weapons, loadImage, saveImage, clearImage, localAsset, assetUrl, isLocal };
 })(window.Aim = window.Aim || {});
