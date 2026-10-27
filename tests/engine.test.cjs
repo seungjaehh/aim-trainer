@@ -82,4 +82,8 @@ test('orbs cannot intersect the floor and cover respects its finite height', () 
   g.yaw = 1; assert.equal(g.wallBlocks(bot), true);
   g.pitch = 30; assert.equal(g.wallBlocks(bot), false);
   g.pitch = 0; g.yaw = -1; assert.equal(g.wallBlocks(bot), false);
+  for (const az of [-26,0,26]) {
+    bot.az = az;
+    close(g.targetPosition(bot).z, 13);
+  }
 });

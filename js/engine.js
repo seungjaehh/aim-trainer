@@ -81,6 +81,9 @@
     }
 
     targetPosition(t) {
+      // 봇의 좌우 이동은 같은 거리의 레인 위에서 이뤄져야 엄폐물 앞뒤를 뚫고 나오지 않는다.
+      if (t.kind === 'bot') return { x: Math.tan(rad(t.az)) * t.d,
+        y: this.eyeHeight + Math.tan(rad(t.el)) * t.d, z: t.d };
       const p = this.position(t.az, t.el, t.d);
       if (t.kind === 'orb') p.y = Math.max(t.r + 0.16, p.y);
       return p;
@@ -401,7 +404,7 @@
       if (A.cfg.bg !== 'grid') for (const t of this.targets) if (t.vis) this.drawShadow(t);
       let wallDrawn = false;
       for (const t of this.targets.slice().sort((a, b) => b.d - a.d)) {
-        if (this.wall && !wallDrawn && t.d < this.wall.d) { this.drawWall(); wallDrawn = true; }
+        if (this.wall && !wallDrawn && this.targetPosition(t).z < this.wall.d) { this.drawWall(); wallDrawn = true; }
         if (!t.vis) continue;
         if (t.kind === 'orb') this.drawOrb(t); else this.drawBot(t);
       }
