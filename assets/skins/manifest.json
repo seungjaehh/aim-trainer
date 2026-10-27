@@ -1,13 +1,14 @@
 {
   "000ad7b1-44b0-9345-ea47-9cbd7dcdbb38": {
     "cleaned": true,
+    "voiceSeparated": true,
     "gun": "gaia_vandal_gun.png",
     "kills": [
       "gaia_vandal_1_clean.wav",
       "gaia_vandal_2_clean.wav",
       "gaia_vandal_3_clean.wav",
       "gaia_vandal_4_clean.wav",
-      "gaia_vandal_5_tail_trimmed.wav"
+      "gaia_vandal_5_no_speech.wav"
     ]
   },
   "9bf19b77-4b33-7203-9f2c-16932970622f": {

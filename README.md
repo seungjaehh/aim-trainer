@@ -64,4 +64,4 @@ Node.js가 있으면 `node --test tests/*.test.cjs`로 시점·판정과 공개 
 
 재생에는 `*_clean.wav` 정리본을 사용합니다. 가이아 2·5단계 끝의 별도 클릭 구간을 덜어내고, 전체 킬음에 약한 배경 잡음 감소와 시작·끝 페이드를 적용했습니다. 정리 전 원본 파일도 보존합니다.
 
-가이아 5단계는 뒤쪽 잔향에 섞인 말소리 구간을 제외하는 `gaia_vandal_5_tail_trimmed.wav`를 사용합니다. 앞 1.58초의 킬음은 기존 정리본과 동일하게 유지하고, 마지막 0.12초를 페이드아웃해 총 1.70초 재생합니다. 5단계 이후에도 이 5번째 음원을 계속 사용합니다.
+가이아 5단계는 녹화에 겹친 사람 목소리를 분리한 `gaia_vandal_5_no_speech.wav`를 사용합니다. 전체 4.2초 길이와 잔향을 유지하며 시작·끝만 짧게 페이드 처리합니다. 오프라인 분리에 [UVR](https://github.com/Anjok07/ultimatevocalremovergui)의 MDX 모델과 [Audio Separator](https://github.com/nomadkaraoke/python-audio-separator)의 공개 추론 방식을 참고했습니다. 분리 과정과 원본은 로컬에 보존하며 앱은 처리된 WAV만 재생합니다.

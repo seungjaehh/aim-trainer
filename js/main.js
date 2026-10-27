@@ -98,7 +98,7 @@
       if (s && cfg.skin !== s.id) return;
       $('skinSoundClear').hidden = !has || !!asset;
       $('skinSoundMsg').textContent = !s ? '' : has ? (asset
-        ? '녹화한 킬사운드 적용 중' + (asset.kills ? ' · 연속 ' + asset.kills.length + '킬 단계' : '') + (asset.cleaned ? ' · 잡음 정리' : '')
+        ? '녹화한 킬사운드 적용 중' + (asset.kills ? ' · 연속 ' + asset.kills.length + '킬 단계' : '') + (asset.cleaned ? ' · 잡음 정리' : '') + (asset.voiceSeparated ? ' · 음성 분리' : '')
         : '올린 소리를 쓰는 중이에요 (이 브라우저에만 저장돼요)') : '파일을 올리지 않으면 이 스킨에 맞춘 합성음이 나요';
     });
     if (s) {
