@@ -82,6 +82,7 @@
         const hit = g.hitAt(true);
         t.color = hit ? '#ffd23f' : '#3fd7ff';
         if (hit) { m.on += dt; g.stats.score += dt * 100; }
+        g.trackSample(t, dt, !!hit);
       } else t.color = '#3fd7ff';
       g.stats.extra.trackingPct = m.held > 0 ? Math.round((m.on / m.held) * 100) : 0;
     },
@@ -207,6 +208,66 @@
       const r = g.stats.extra.reactions;
       const avg = r.length ? Math.round(r.reduce((a, b) => a + b, 0) / r.length) : 0;
       return [['평균 반응', r.length ? avg + 'ms' : '-'], ['가장 빠른 반응', r.length ? Math.min(...r) + 'ms' : '-']];
+    },
+  });
+
+  /* ---- 감도 맞추기: 한 번에 휘두른 첫 동작이 어디서 멈추는지 재서 감도를 추천한다 ---- */
+  const SENS_TRIALS = 24;
+  modes.push({
+    id: 'sens', icon: '⚖', name: '감도 맞추기', trials: SENS_TRIALS, special: true,
+    desc: '타겟이 뜨면 한 번에 휘둘러 맞혀요. 첫 동작이 지나치는지 모자라는지 ' + SENS_TRIALS + '번 재서 지금 감도 기준으로 새 감도를 추천해요.',
+    setup(g) {
+      g.m = { queue: [], phase: 'settle', calm: 0, ratios: [], trial: null, lastYaw: g.yaw, lastPitch: g.pitch, speed: 0, done: 0 };
+      g.stats.extra.ratios = g.m.ratios;
+    },
+    spawn(g) {
+      const dist = rand(14, 42), dir = rand(-0.45, 0.45) + (Math.random() < 0.5 ? 0 : Math.PI);
+      const el = clamp(g.pitch + Math.sin(dir) * dist, -16, 22);
+      const t = g.orb(g.yaw + Math.cos(dir) * dist, el, 14, 0.3);
+      g.m.trial = { t, peak: 0, slow: 0, end: null, shown: g.t };
+      g.m.phase = 'ready';
+    },
+    /* 첫 동작의 끝점: 이동 방향으로 간 거리 / 타겟까지 거리 */
+    record(g) {
+      const tr = g.m.trial;
+      if (!tr || tr.end) return;
+      const e = g.aimError(tr.t), len = Math.hypot(e.ax, e.ay);
+      tr.end = 1 + (e.ex * e.ax + e.ey * e.ay) / len / len;
+      g.m.ratios.push(tr.end);
+      g.stats.score += Math.max(0, Math.round(100 - Math.abs(tr.end - 0.95) * 300));
+    },
+    update(g, dt) {
+      flushQueue(g);
+      const m = g.m;
+      const move = Math.hypot(A.util.wrap(g.yaw - m.lastYaw), g.pitch - m.lastPitch) / Math.max(dt, 1e-3);
+      m.lastYaw = g.yaw; m.lastPitch = g.pitch;
+      m.speed = m.speed * 0.5 + move * 0.5;  // 마우스 이벤트가 프레임마다 고르지 않아 살짝 평활화
+      if (m.phase === 'settle') {
+        // 손이 멈춘 상태에서 다음 타겟을 띄워야 첫 동작을 깨끗하게 잴 수 있다
+        m.calm = m.speed < 12 ? m.calm + dt : 0;
+        if (m.calm > 0.3) this.spawn(g);
+      } else if (m.phase === 'ready' || m.phase === 'moving') {
+        const tr = m.trial;
+        if (m.speed > 40) { m.phase = 'moving'; tr.peak = Math.max(tr.peak, m.speed); }
+        if (m.phase === 'moving' && !tr.end) {
+          tr.slow = m.speed < Math.max(25, tr.peak * 0.18) ? tr.slow + dt : 0;
+          if (tr.slow >= 0.03) this.record(g);
+        }
+        if (g.t - tr.shown > 3) { g.remove(tr.t); this.next(g); }  // 너무 오래 걸리면 넘긴다
+      }
+    },
+    next(g) {
+      g.m.trial = null; g.m.phase = 'wait'; g.m.done++;
+      if (g.m.done >= SENS_TRIALS) { g.over = true; return; }
+      later(g, 0.35, () => { g.m.phase = 'settle'; g.m.calm = 0; });
+    },
+    onKill(g) { this.record(g); this.next(g); },
+    draw(g, ctx) {
+      const k = Math.max(1, g.H / 1080);
+      ctx.save(); ctx.textAlign = 'left'; ctx.fillStyle = '#cbd8db';
+      ctx.font = '500 ' + Math.round(15 * k) + 'px system-ui, sans-serif';
+      ctx.fillText('감도 맞추기 ' + Math.min(g.m.done + 1, SENS_TRIALS) + ' / ' + SENS_TRIALS + (g.m.phase === 'settle' ? ' · 마우스를 멈추면 타겟이 떠요' : ''), 24*k, 104*k);
+      ctx.restore();
     },
   });
 

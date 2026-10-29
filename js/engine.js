@@ -104,24 +104,64 @@
       A.audio.resetStreak();
       this.mode = mode;
       this.targets = []; this.wall = null; this.marks = [];
-      this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, ttk: 0, score: 0, extra: {} };
-      this.t = 0; this.cool = 0; this.yaw = 0; this.pitch = 0; this.banner = '';
+      this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, ttk: 0, score: 0, extra: {},
+        shotLog: [], track: { time: 0, ahead: 0, behind: 0, vertical: 0 } };
+      this.t = 0; this.cool = 0; this.yaw = 0; this.pitch = 0; this.banner = ''; this.over = false;
       this.kick = 0; this.feed = []; this.pops = []; this.tracers = []; this.reloading = 0;
       this.ammo = Infinity;
       mode.setup(this);
     }
 
     orb(az, el, d, r) {
-      const t = { kind: 'orb', az, el, d, r: r * A.cfg.targetSize, hp: 1, born: this.t, vis: true };
+      const t = { kind: 'orb', az, el, d, r: r * A.cfg.targetSize, hp: 1, born: this.t, vis: true, fromYaw: this.yaw, fromPitch: this.pitch };
       this.targets.push(t);
       return t;
     }
     bot(az, el, d) {
-      const t = { kind: 'bot', az, el, d, hp: 100, born: this.t, vis: true };
+      const t = { kind: 'bot', az, el, d, hp: 100, born: this.t, vis: true, fromYaw: this.yaw, fromPitch: this.pitch };
       this.targets.push(t);
       return t;
     }
     remove(t) { this.targets = this.targets.filter((x) => x !== t); }
+
+    /* 카메라에서 본 타겟(봇은 머리) 중심의 방향과 각 반지름 */
+    targetAngles(t) {
+      const p = this.targetPosition(t), flat = Math.hypot(p.x, p.z), dist = Math.hypot(flat, p.y - this.eyeHeight);
+      const size = t.kind === 'orb' ? t.r : 0.1;
+      return { az: Math.atan2(p.x, p.z) * 180 / Math.PI, el: Math.atan2(p.y - this.eyeHeight, flat) * 180 / Math.PI,
+        r: Math.atan2(size, dist) * 180 / Math.PI };
+    }
+
+    /* 조준선이 타겟 중심에서 얼마나 벗어났는지 (도). ex 는 오른쪽, ey 는 위가 + */
+    aimError(t) {
+      const a = this.targetAngles(t), c = Math.cos(a.el * Math.PI / 180);
+      return { ex: wrap(this.yaw - a.az) * c, ey: this.pitch - a.el, r: a.r,
+        ax: wrap(a.az - (t.fromYaw ?? this.yaw)) * c, ay: a.el - (t.fromPitch ?? this.pitch), vaz: t.vaz || 0 };
+    }
+
+    /* 빗나간 샷은 가장 가까운 타겟을 기준으로 기록한다 */
+    logShot(hit) {
+      let t = hit && hit.t, best = Infinity;
+      if (!t) for (const x of this.targets) {
+        if (!x.vis) continue;
+        const e = this.aimError(x), d = Math.hypot(e.ex, e.ey);
+        if (d < best) { best = d; t = x; }
+      }
+      if (!t) return;
+      const log = this.stats.shotLog;
+      log.push(Object.assign(this.aimError(t), { hit: !!hit, part: hit ? hit.part : null, mode: this.mode.id }));
+      if (log.length > 1500) log.shift();
+    }
+
+    /* 트래킹: 누르고 있는 동안 타겟보다 앞/뒤/위아래로 벗어난 시간 */
+    trackSample(t, dt, on) {
+      const tr = this.stats.track;
+      tr.time += dt;
+      if (on) return;
+      const e = this.aimError(t), lead = e.ex * Math.sign(e.vaz || 0);
+      if (Math.abs(e.ey) > Math.abs(e.ex)) tr.vertical += dt;
+      else if (lead > 0) tr.ahead += dt; else if (lead < 0) tr.behind += dt;
+    }
 
     /* 십자선 위치에 닿는 타겟과 부위 */
     hitAt(onlyVisible) {
@@ -179,6 +219,7 @@
       this.kick = Math.min(1, this.kick + 0.7);
       this.stats.shots++;
       const hit = this.hitAt(true);
+      this.logShot(hit);
       if (w && this.ammo <= 0) this.reload();
       if (!hit) { A.audio.resetStreak(); if (this.mode.onMiss) this.mode.onMiss(this); return; }  // 한 발이라도 놓치면 킬 소리는 1킬부터
 
@@ -213,7 +254,13 @@
       this.cool = Math.max(0, this.cool - dt);
       if (this.mouseDown && !this.mode.hold && this.mode.auto) this.fire();
       this.mode.update(this, dt);
-      for (const t of this.targets) if (t.flash) t.flash = Math.max(0, t.flash - dt);
+      for (const t of this.targets) {
+        if (t.flash) t.flash = Math.max(0, t.flash - dt);
+        // 좌우 각속도(°/s): 움직이는 타겟을 앞서/뒤처져 쐈는지 판단할 때 쓴다
+        const az = this.targetAngles(t).az;
+        if (t.lastAz != null && dt > 0) t.vaz = t.vaz == null ? (az - t.lastAz) / dt : t.vaz * 0.7 + ((az - t.lastAz) / dt) * 0.3;
+        t.lastAz = az;
+      }
       this.marks = this.marks.filter((m) => (m.t -= dt) > 0);
       this.pops = this.pops.filter((m) => (m.t -= dt) > 0);
       this.tracers = this.tracers.filter((m) => (m.t -= dt) > 0);

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>에임 트레이너</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=analysis-1">
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -12,11 +12,19 @@
 <main id="menu">
   <header>
     <h1>🎯 에임 트레이너</h1>
-    <p>발로란트 조준선 코드를 붙여넣고, 대기샷·플릭샷·트래킹 등 에임 연습을 해요.</p>
+    <p>발로란트 조준선 코드를 붙여넣고 연습해요. 매 판 빗나간 샷을 분석하고, 감도를 맞춰 주고, 기록으로 성장을 보여 줘요.</p>
   </header>
 
   <div class="layout">
-    <section class="modes" id="modes" aria-label="연습 모드"></section>
+    <div class="main-col">
+      <section class="modes" id="modes" aria-label="연습 모드"></section>
+      <section class="history" aria-label="성장 기록">
+        <div class="history-head"><h2>📈 성장 기록</h2><select id="historyMode" aria-label="기록을 볼 모드"></select></div>
+        <canvas id="historyChart" class="trend tall"></canvas>
+        <div class="history-stats" id="historyStats"></div>
+        <p class="hint">기록은 이 브라우저에 모드마다 최근 200판까지 저장돼요. 그래프에 마우스를 올리면 그 판의 점수와 명중률이 보여요.</p>
+      </section>
+    </div>
 
     <aside class="settings">
       <details open>
@@ -79,8 +87,9 @@
 <script src="js/crosshair.js"></script>
 <script src="js/audio.js?v=recorded-assets-1"></script>
 <script src="js/skins.js?v=gaia-vocal-separated-1"></script>
-<script src="js/engine.js?v=gaia-stacks-1"></script>
-<script src="js/modes.js?v=hold-speed-1"></script>
-<script src="js/main.js?v=gaia-vocal-separated-1"></script>
+<script src="js/engine.js?v=analysis-1"></script>
+<script src="js/modes.js?v=analysis-1"></script>
+<script src="js/analysis.js?v=analysis-1"></script>
+<script src="js/main.js?v=analysis-1"></script>
 </body>
 </html>
