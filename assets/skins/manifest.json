@@ -9,7 +9,22 @@
       "gaia_vandal_3_clean.wav",
       "gaia_vandal_4_clean.wav",
       "gaia_vandal_5_no_speech.wav"
-    ]
+    ],
+    "weaponUuid": "9c82e19d-4575-0200-1a81-3eacf00cf872",
+    "skinUuid": "000ad7b1-44b0-9345-ea47-9cbd7dcdbb38",
+    "source": "저장소에 이미 있던 녹화·편집본 (코드 주석 기준). 원본 영상 주소 기록 없음",
+    "verification": "파일 존재와 재생·표시만 확인. 현재 패치 원본과의 일치 여부는 미확인",
+    "rightsStatus": "unresolved - Riot Games 자산. 사용 허가를 확인하지 않음",
+    "sha256": {
+      "gaia_vandal_gun.png": "136e159aa17c1eb22c8a1e56175c0281a5f34351062409bfada0e44b9a0e20c4",
+      "gaia_vandal_1_clean.wav": "342d064755715a9aa8216fc162980c03d37f5c26a05f6ded48eafc878a7fc9f6",
+      "gaia_vandal_2_clean.wav": "5ca0337822e4beb1733d0260960d67b2b77855615d93a986423702f01b2a50ab",
+      "gaia_vandal_3_clean.wav": "93bb1a5840413f6528b779e7bbf89b084d6150b168b783ba929b1baed47a7753",
+      "gaia_vandal_4_clean.wav": "596fe771b70fbd878c0609d3179880b913c118c115aa8e59360de3456aa639c5",
+      "gaia_vandal_5_no_speech.wav": "a4242de7a8bdd674916cb6c52613a24920f24d3f7d4ce3255a6cf92762023f11"
+    },
+    "banners": null,
+    "model": null
   },
   "9bf19b77-4b33-7203-9f2c-16932970622f": {
     "cleaned": true,
@@ -20,6 +35,21 @@
       "champions_vandal_k3_clean.wav",
       "champions_vandal_k4_clean.wav",
       "champions_vandal_k5_clean.wav"
-    ]
+    ],
+    "weaponUuid": "9c82e19d-4575-0200-1a81-3eacf00cf872",
+    "skinUuid": "9bf19b77-4b33-7203-9f2c-16932970622f",
+    "source": "저장소에 이미 있던 녹화·편집본 (코드 주석 기준). 원본 영상 주소 기록 없음",
+    "verification": "파일 존재와 재생·표시만 확인. 현재 패치 원본과의 일치 여부는 미확인",
+    "rightsStatus": "unresolved - Riot Games 자산. 사용 허가를 확인하지 않음",
+    "sha256": {
+      "champions_vandal_gun.png": "a14bbc90abcbd966743b9248d0b0a853f587d5b6b55758b371ca953cf2ba4927",
+      "champions_vandal_k1_clean.wav": "7a1cd12c7e75bb6f9401a0e23239c67207bf850f28ae4da83a9588621a8e7fa8",
+      "champions_vandal_k2_clean.wav": "480bf433736c2791088f24e7d713356728a140328694764161439f8c5286489e",
+      "champions_vandal_k3_clean.wav": "450c27c130bebfe135f0d87852e636398ebec1ee809cce377c58587ee28486ef",
+      "champions_vandal_k4_clean.wav": "4e6182686c0e80f6b63c5df1f4fe36f94a04644098749df2a0d441e6cac6ed33",
+      "champions_vandal_k5_clean.wav": "efb9241a6a6514ed120fa059425243802236dff6c3dd40ccc8bc67557eaad25c"
+    },
+    "banners": null,
+    "model": null
   }
 }

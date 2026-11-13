@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>에임 트레이너</title>
-<link rel="stylesheet" href="style.css?v=analysis-1">
+<link rel="stylesheet" href="style.css?v=val-3">
 </head>
 <body>
+<canvas id="scene" style="display:none"></canvas>
 <canvas id="game"></canvas>
 
 <main id="menu">
@@ -67,6 +68,8 @@
         <label>연습 시간
           <select id="duration"><option value="30">30초</option><option value="60">60초</option><option value="120">120초</option></select>
         </label>
+        <label>킬 배너 <select id="banner"><option value="on">켜기 · 연속 킬 수 표시</option><option value="off">끄기</option></select></label>
+        <label>그래픽 <select id="gfx"><option value="3d">3D · Blender 모델과 구운 조명</option><option value="2d">2D · 가벼운 화면</option></select></label>
         <label>배경 <select id="bg"><option value="range">연습장 · 바닥과 거리 표시</option><option value="dark">어두운 연습장</option><option value="grid">기존 격자</option></select></label>
         <label>대기샷 봇 속도 <select id="holdSpeed"></select></label>
         <p class="hint">스킬·버프를 제외한 일반 이동 기준이에요. 앉기 속도는 약 1.90 m/s의 실측 근사치예요.</p>
@@ -87,9 +90,12 @@
 <script src="js/crosshair.js"></script>
 <script src="js/audio.js?v=recorded-assets-1"></script>
 <script src="js/skins.js?v=gaia-vocal-separated-1"></script>
-<script src="js/engine.js?v=analysis-1"></script>
-<script src="js/modes.js?v=analysis-1"></script>
+<script src="js/engine.js?v=val-3"></script>
+<script src="js/modes.js?v=val-3"></script>
+<script src="js/valorant.js?v=val-3"></script>
 <script src="js/analysis.js?v=analysis-1"></script>
-<script src="js/main.js?v=analysis-1"></script>
+<script src="js/main.js?v=val-3"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module" src="js/scene3d.js?v=val-3"></script>
 </body>
 </html>

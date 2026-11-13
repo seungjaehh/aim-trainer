@@ -81,6 +81,8 @@
       A.holdSpeeds.map((p) => [p.id, p.label + ' · ' + (p.crouch ? '약 ' : '') + p.speed.toFixed(2) + ' m/s'])), cfg.holdSpeed);
     bindSelect('holdSpeed', 'holdSpeed');
     bindSelect('bg', 'bg', drawPreview);
+    bindSelect('gfx', 'gfx');
+    bindSelect('banner', 'banner');
     $('guide').checked = cfg.guide;
     $('guide').addEventListener('change', () => { cfg.guide = $('guide').checked; A.save(); });
   }
@@ -107,6 +109,11 @@
       A.weapon = { feedImg: img, title: w.name + ' · ' + s.name, img, muzzle: s.muzzle, rate: w.stats && w.stats.rate, reload: w.stats && w.stats.reload };
       A.skins.loadImage(s.id).then((own) => {
         if (own && A.weapon && A.weapon.feedImg === img) { A.weapon.img = own; A.weapon.fp = true; }
+      });
+      // 매니페스트에 킬 배너 이미지(banners: 1~5킬 순서)가 있으면 직접 그린 배너 대신 쓴다
+      A.skins.localAsset(s.id).then((asset) => {
+        if (!asset || !asset.banners || !A.weapon || A.weapon.feedImg !== img) return;
+        A.weapon.banners = asset.banners.map((n) => { const b = new Image(); b.src = A.skins.assetUrl(asset, n); return b; });
         if (cfg.skin === s.id) $('skinImgClear').hidden = !own || own.builtIn;
       });
     } else A.weapon = null;
@@ -171,10 +178,17 @@
   const fmtNum = (v) => Math.round(v).toLocaleString('ko-KR');
   const escape = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   // 하루 루틴: 워밍업 → 정밀 → 플릭 → 전환 → 트래킹 → 이동 → 높이 → 각 잡기 → 반응 (약 11분)
-  const ROUTINE = [
-    ['grid', 60, '워밍업'], ['micro', 60, '정밀'], ['flick', 90, '플릭'], ['switch', 60, '전환'], ['track', 90, '트래킹'],
-    ['strafe', 60, '이동 사격'], ['headline', 60, '높이 유지'], ['hold', 90, '각 잡기'], ['reaction', 45, '반응'],
-  ].map(([id, sec, role]) => ({ id, sec, role }));
+  const steps = (list) => list.map(([id, sec, role]) => ({ id, sec, role }));
+  const ROUTINES = [
+    { key: 'routine', icon: '📅', name: '하루 루틴', steps: steps([
+      ['grid', 60, '워밍업'], ['micro', 60, '정밀'], ['flick', 90, '플릭'], ['switch', 60, '전환'], ['track', 90, '트래킹'],
+      ['strafe', 60, '이동 사격'], ['headline', 60, '높이 유지'], ['hold', 90, '각 잡기'], ['reaction', 45, '반응']]) },
+    // 실전 루틴: 높이 → 프리에임 → 각 잡기 → 멈추고 쏘기 → 피킹 → 샷 유도 → 발수 조절 (약 9분)
+    { key: 'routine-val', icon: '🎯', name: '발로란트 실전 루틴', steps: steps([
+      ['headline', 60, '조준선 높이'], ['preaim', 90, '프리에임'], ['hold', 60, '대기샷'], ['counter', 75, '멈추고 쏘기'],
+      ['peek', 90, '피킹'], ['jiggle', 75, '샷 유도'], ['burst', 75, '발수 조절']]) },
+  ];
+  let ROUTINE = ROUTINES[0].steps;
   const modeById = (id) => A.modes.find((m) => m.id === id);
   let routine = null;  // { i, results, banner }
 
@@ -190,13 +204,30 @@
   function renderModes() {
     const box = $('modes');
     box.innerHTML = '';
-    const total = Math.round((ROUTINE.reduce((a, s) => a + s.sec, 0) + ROUTINE.length * 4) / 60);
-    const r = card({ icon: '📅', name: '하루 루틴', desc: ROUTINE.map((s) => modeById(s.id).name).join(' → ') + ' 순서로 이어서 해요. 약 ' + total + '분, 평소 기록과 비교해 오늘 컨디션과 약점을 알려 줘요.' }, 'feature');
-    const streak = H.streak(), lastRun = H.list('routine').slice(-1)[0];
-    r.querySelector('.best').textContent = (streak ? '🔥 ' + streak + '일 연속 · ' : '') + (lastRun ? '지난 루틴 평소 대비 ' + lastRun.score + '%' : '아직 해 본 적 없어요');
-    r.onclick = startRoutine;
-    box.appendChild(r);
-    for (const m of A.modes) {
+    const heading = (text, sub) => {
+      const h = document.createElement('div');
+      h.className = 'cat'; h.innerHTML = '<h3></h3><span></span>';
+      h.querySelector('h3').textContent = text; h.querySelector('span').textContent = sub;
+      box.appendChild(h);
+    };
+    heading('루틴', '여러 모드를 이어서 하고 평소 기록과 비교해요');
+    for (const def of ROUTINES) {
+      const total = Math.round((def.steps.reduce((a, s) => a + s.sec, 0) + def.steps.length * 4) / 60);
+      const r = card({ icon: def.icon, name: def.name, desc: def.steps.map((s) => modeById(s.id).name.split(' (')[0]).join(' → ') + ' 순서로 이어서 해요. 약 ' + total + '분.' }, 'feature');
+      const streak = H.streak(), lastRun = H.list(def.key).slice(-1)[0];
+      r.querySelector('.best').textContent = (streak ? '🔥 ' + streak + '일 연속 · ' : '') + (lastRun ? '지난 루틴 평소 대비 ' + lastRun.score + '%' : '아직 해 본 적 없어요');
+      r.onclick = () => startRoutine(def);
+      box.appendChild(r);
+    }
+    const ordered = A.modes.filter((m) => m.cat === 'val').concat(A.modes.filter((m) => m.cat !== 'val'));
+    let cat = '';
+    for (const m of ordered) {
+      const c = m.cat === 'val' ? 'val' : 'base';
+      if (c !== cat) {
+        cat = c;
+        if (c === 'val') heading('발로란트 실전', 'A/D 로 직접 움직여요. 움직이며 쏘면 탄이 퍼져요');
+        else heading('기본기', '마우스 조준만 집중해서 연습해요');
+      }
       const b = card(m, m.special ? 'feature' : '');
       const best = cfg.best[m.id], n = H.list(m.id).length, log = cfg.sensLog || [];
       b.querySelector('.best').textContent = m.id === 'sens'
@@ -213,11 +244,11 @@
     const sel = $('historyMode');
     if (!sel.options.length) {
       for (const m of A.modes.filter((x) => !x.special)) sel.add(new Option(m.name, m.id));
-      sel.add(new Option('하루 루틴 (평소 대비 %)', 'routine'));
+      for (const def of ROUTINES) sel.add(new Option(def.name + ' (평소 대비 %)', def.key));
       sel.value = cfg.historyMode || 'grid';
       sel.onchange = () => { cfg.historyMode = sel.value; A.save(); renderHistory(); };
     }
-    const id = sel.value, list = H.list(id), routineView = id === 'routine';
+    const id = sel.value, list = H.list(id), routineView = id.startsWith('routine');
     AN.drawTrend($('historyChart'), list, { format: routineView ? (v) => Math.round(v) + '%' : fmtNum });
     const rows = [];
     if (list.length) {
@@ -260,8 +291,9 @@
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(loop);
   }
-  function startRoutine() {
-    routine = { i: 0, results: [], banner: '' };
+  function startRoutine(def) {
+    ROUTINE = def.steps;
+    routine = { i: 0, results: [], banner: '', def };
     startStep();
   }
   function startStep() {
@@ -270,7 +302,7 @@
     start(modeById(step.id), { duration: step.sec, countdown: routine.i ? 4 : 3 });
   }
   function toMenu() {
-    game.mouseDown = false;
+    game.mouseDown = false; game.keys = {};
     state = 'menu'; routine = null;
     cancelAnimationFrame(raf);
     overlay(''); $('menu').hidden = false; $('hudWeapon').hidden = true;
@@ -288,6 +320,14 @@
     };
   }
   const versus = (score, avg) => (score >= avg ? '+' : '') + Math.round((score / avg - 1) * 100) + '%';
+  /* 모드별 훈련 요령과 근거 자료 */
+  function guideHtml(mode, tip) {
+    const g = mode.guide;
+    if (!g && !tip) return '';
+    return '<div class="guide">' + (tip ? '<p class="tip">💡 ' + escape(tip) + '</p>' : '') +
+      (g ? '<h3>훈련 요령</h3><ul>' + g.points.map((p) => '<li>' + escape(p) + '</li>').join('') + '</ul>' +
+        '<p class="src">근거 자료: ' + g.src.map((s) => '<a href="' + s[1] + '" target="_blank" rel="noopener">' + escape(s[0]) + '</a>').join(' · ') + '</p>' : '') + '</div>';
+  }
   function analysisHtml(a) {
     if (!a.points.length && !a.trackTime) return '';
     const facts = [];
@@ -336,6 +376,7 @@
     overlay('<h2>' + current.name + ' 결과</h2><div class="big">' + fmtNum(score) + '</div>' +
       '<div class="msg">' + (score > prev ? '🏆 새 최고 점수!' : '최고 점수 ' + fmtNum(prev)) + '</div>' +
       '<div class="result-grid"><table>' + table + '</table>' + analysisHtml(a) + '</div>' +
+      guideHtml(current, current.tip ? current.tip(game) : '') +
       '<h3 class="sub">최근 추세 <small>파란 선: 점수 · 흐린 선: 5회 평균</small></h3><canvas id="trend" class="trend"></canvas>' +
       '<div class="actions"><button class="primary" id="again">다시 하기 (T)</button><button id="home">메뉴</button></div>', true);
     if ($('missMap')) AN.drawMisses($('missMap'), a.points);
@@ -379,23 +420,24 @@
     const track = { time: 0, ahead: 0, behind: 0, vertical: 0 };
     for (const r of res) if (r.track) for (const k in track) track[k] += r.track[k];
     const all = AN.shots(res.flatMap((r) => r.log), track);
-    H.add('routine', { score: overall, steps: res.map((r) => [r.mode.id, r.rec.score]) });
+    const def = routine.def;
+    H.add(def.key, { score: overall, steps: res.map((r) => [r.mode.id, r.rec.score]) });
     const streak = H.streak();
     const rows = res.map((r) => '<tr><td>' + r.mode.name + '</td><td>' + fmtNum(r.rec.score) + '</td><td class="' +
       (r.prevAvg ? (ratio(r) >= 1 ? 'up' : 'down') : '') + '">' + (r.prevAvg ? versus(r.rec.score, r.prevAvg) : '첫 기록') + '</td></tr>').join('');
-    overlay('<h2>📅 하루 루틴 완료</h2><div class="big">' + overall + '%</div>' +
+    overlay('<h2>' + def.icon + ' ' + def.name + ' 완료</h2><div class="big">' + overall + '%</div>' +
       '<div class="msg">' + (compared.length ? '평소 기록 대비' : '첫 루틴이라 다음부터 평소와 비교해요') + (streak > 1 ? ' · 🔥 ' + streak + '일 연속' : '') + '</div>' +
       '<div class="result-grid"><table><tr><th>모드</th><th>점수</th><th>평소 대비</th></tr>' + rows + '</table>' + analysisHtml(all) + '</div>' +
       (weakest && weakest !== strongest ? '<p class="tip">오늘 가장 좋았던 건 <b>' + strongest.mode.name + '</b>, 가장 약했던 건 <b>' + weakest.mode.name + '</b>이에요. 시간이 남으면 ' + weakest.mode.name + '을 한 판 더 해 보세요.</p>' : '') +
       '<h3 class="sub">루틴 추세 <small>100% = 평소</small></h3><canvas id="trend" class="trend"></canvas>' +
       '<div class="actions">' + (weakest ? '<button class="primary" id="weak">' + weakest.mode.name + ' 한 판 더</button>' : '') + '<button id="home">메뉴</button></div>', true);
     if ($('missMap')) AN.drawMisses($('missMap'), all.points);
-    AN.drawTrend($('trend'), H.list('routine'), { format: (v) => Math.round(v) + '%' });
+    AN.drawTrend($('trend'), H.list(def.key), { format: (v) => Math.round(v) + '%' });
     if ($('weak')) $('weak').onclick = () => { const m = weakest.mode; routine = null; start(m); };
     $('home').onclick = toMenu;
   }
   function pause() {
-    game.mouseDown = false;
+    game.mouseDown = false; game.keys = {};
     state = 'pause';
     overlay('<h2>일시정지</h2><p class="msg">Esc 로 마우스가 풀렸어요.' + (routine ? ' 메뉴로 가면 루틴이 끝나요.' : '') + '</p><div class="actions"><button class="primary" id="resume">계속하기</button><button id="home">메뉴</button></div>');
     $('resume').onclick = () => { overlay(''); state = 'run'; last = performance.now(); lock(); };
@@ -410,7 +452,7 @@
     if (Number.isFinite(left)) ctx.fillText(Math.ceil(left) + '초', W / 2, 44 * k);
     if (routine) {
       ctx.font = '500 ' + Math.round(14 * k) + 'px system-ui, sans-serif'; ctx.fillStyle = 'rgba(203,216,219,.9)';
-      ctx.fillText('하루 루틴 ' + (routine.i + 1) + ' / ' + ROUTINE.length + ' · ' + current.name, W / 2, 68 * k);
+      ctx.fillText(routine.def.name + ' ' + (routine.i + 1) + ' / ' + ROUTINE.length + ' · ' + current.name, W / 2, 68 * k);
       ctx.font = '600 ' + Math.round(22 * k) + 'px system-ui, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.92)';
     }
     ctx.textAlign = 'left';
@@ -425,6 +467,16 @@
       if (routine && routine.banner) {
         ctx.font = '600 ' + Math.round(20 * k) + 'px system-ui, sans-serif';
         ctx.fillText(routine.banner, W / 2, game.cy - 230 * k);
+      }
+      // 시작 전에 이 모드의 훈련 요령을 보여 준다
+      if (current.guide) {
+        const lines = current.guide.points, lh = 26 * k, top = game.cy + 70 * k;
+        ctx.font = '500 ' + Math.round(16 * k) + 'px system-ui, sans-serif';
+        const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 48 * k;
+        ctx.fillStyle = 'rgba(12,18,24,.72)';
+        ctx.fillRect(W / 2 - w / 2, top - 30 * k, w, lines.length * lh + 34 * k);
+        ctx.fillStyle = 'rgba(235,242,244,.95)';
+        lines.forEach((l, i) => ctx.fillText(l, W / 2, top + i * lh));
       }
     }
   }
@@ -458,11 +510,14 @@
   document.addEventListener('pointerlockchange', () => {
     if (!document.pointerLockElement && (state === 'run' || state === 'countdown')) pause();
   });
+  const moveKey = (e) => ({ KeyA: 'a', KeyD: 'd', ArrowLeft: 'a', ArrowRight: 'd', ShiftLeft: 'shift', ShiftRight: 'shift' }[e.code]);
+  document.addEventListener('keydown', (e) => { const k = moveKey(e); if (k && state === 'run') { game.keys[k] = true; if (current.move) e.preventDefault(); } });
+  document.addEventListener('keyup', (e) => { const k = moveKey(e); if (k) game.keys[k] = false; });
   document.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() === 't' && (state === 'run' || state === 'result') && !routine) start(current);
     if (e.key === 'Escape' && !document.pointerLockElement && (state === 'run' || state === 'countdown')) pause();
   });
-  window.addEventListener('blur', () => { game.mouseDown = false; });
+  window.addEventListener('blur', () => { game.mouseDown = false; game.keys = {}; });
   window.addEventListener('resize', () => { game.resize(); if (state === 'menu') drawPreview(); });
 
   /* 주소 뒤에 #code=조준선코드 가 붙어 오면(디스코드 봇 링크) 그 조준선으로 바꿔 시작한다 */

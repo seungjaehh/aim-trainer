@@ -22,6 +22,15 @@
   ];
   const HIGHLIGHT = '#d648ec';
 
+  /* 이동·사격 정확도 (연습용 근사).
+     감속 시간은 Riot 개발자(Riot_Classick)가 공개한 측정값: 달리다 키를 놓으면 0.170초, 반대 키를 누르면 0.160초에 완전 정지.
+     이동 속도가 최고 속도의 30% 이하면 정지와 같은 정확도(데드존), 61% 이하는 걷기 수준 오차로 본다. */
+  const MOVE = { run: 5.4, walk: 3.24, accel: 0.2, release: 0.17, counter: 0.16, dead: 0.30, walkPct: 0.61,
+    walkErr: 2.0, runErr: 5.0 };
+  /* 밴달 연사: 초탄 0.25°, 처음 몇 발은 위로 일정하게 오르고 그 뒤 좌우로 흔들린다. 0.33초 쉬면 초탄으로 돌아온다. */
+  const GUN = { rate: 9.75, base: 0.25, reset: 0.33,
+    rise: [0, 0.30, 0.85, 1.7, 2.7, 3.7, 4.6, 5.3, 5.8, 6.1, 6.3, 6.45, 6.5] };
+
   class Game {
     constructor(canvas) {
       this.canvas = canvas;
@@ -37,6 +46,9 @@
       this.cool = 0;
       this.kick = 0; this.feed = []; this.pops = []; this.tracers = [];
       this.ammo = Infinity; this.reloading = 0;
+      this.pos = { x: 0, z: 0 }; this.vx = 0; this.keys = {}; this.covers = []; this.props = [];
+      this.impacts = []; this.spray = { n: 0, last: -9, dir: 1 }; this.hurtT = 0; this.bounds = null;
+      this.lastRun = -9; this.stopAt = -9;
       this.resize();
     }
 
@@ -59,6 +71,7 @@
     /* 모든 물체와 바닥에 같은 카메라 회전을 적용한다. y는 위쪽이 +. */
     cameraPoint(x, y, z) {
       const yaw = rad(this.yaw), pitch = rad(this.pitch);
+      x -= this.pos.x; z -= this.pos.z;
       const rx = Math.cos(yaw) * x - Math.sin(yaw) * z;
       const rz = Math.sin(yaw) * x + Math.cos(yaw) * z;
       const ry = y - this.eyeHeight;
@@ -83,7 +96,7 @@
     targetPosition(t) {
       // 봇의 좌우 이동은 같은 거리의 레인 위에서 이뤄져야 엄폐물 앞뒤를 뚫고 나오지 않는다.
       if (t.kind === 'bot') return { x: Math.tan(rad(t.az)) * t.d,
-        y: this.eyeHeight + Math.tan(rad(t.el)) * t.d - (t.crouch || 0), z: t.d };
+        y: this.eyeHeight + Math.tan(rad(t.el)) * t.d - (t.crouch || 0) + (t.lift || 0), z: t.d };
       const p = this.position(t.az, t.el, t.d);
       if (t.kind === 'orb') p.y = Math.max(t.r + 0.16, p.y);
       return p;
@@ -97,11 +110,11 @@
     /* 기존 모드가 쓰는 각도도 같은 3D 카메라로 투영한다. */
     project(az, el) {
       const p = this.position(az, el, 10);
-      return this.worldPoint(p.x, p.y, p.z);
+      return this.worldPoint(p.x + this.pos.x, p.y, p.z + this.pos.z);
     }
 
     reset(mode) {
-      A.audio.resetStreak();
+      A.audio.resetStreak(); this.kstreak = 0; this.banner = null;
       this.mode = mode;
       this.targets = []; this.wall = null; this.marks = [];
       this.stats = { shots: 0, hits: 0, kills: 0, heads: 0, ttk: 0, score: 0, extra: {},
@@ -109,6 +122,8 @@
       this.t = 0; this.cool = 0; this.yaw = 0; this.pitch = 0; this.banner = ''; this.over = false;
       this.kick = 0; this.feed = []; this.pops = []; this.tracers = []; this.reloading = 0;
       this.ammo = Infinity;
+      this.pos = { x: 0, z: 0 }; this.vx = 0; this.covers = []; this.props = []; this.bounds = null;
+      this.impacts = []; this.spray = { n: 0, last: -9, dir: 1 }; this.hurtT = 0; this.lastRun = -9; this.stopAt = -9;
       mode.setup(this);
     }
 
@@ -126,9 +141,10 @@
 
     /* 카메라에서 본 타겟(봇은 머리) 중심의 방향과 각 반지름 */
     targetAngles(t) {
-      const p = this.targetPosition(t), flat = Math.hypot(p.x, p.z), dist = Math.hypot(flat, p.y - this.eyeHeight);
+      const p = this.targetPosition(t), dx = p.x - this.pos.x, dz = p.z - this.pos.z;
+      const flat = Math.hypot(dx, dz), dist = Math.hypot(flat, p.y - this.eyeHeight);
       const size = t.kind === 'orb' ? t.r : 0.1;
-      return { az: Math.atan2(p.x, p.z) * 180 / Math.PI, el: Math.atan2(p.y - this.eyeHeight, flat) * 180 / Math.PI,
+      return { az: Math.atan2(dx, dz) * 180 / Math.PI, el: Math.atan2(p.y - this.eyeHeight, flat) * 180 / Math.PI,
         r: Math.atan2(size, dist) * 180 / Math.PI };
     }
 
@@ -149,7 +165,8 @@
       }
       if (!t) return;
       const log = this.stats.shotLog;
-      log.push(Object.assign(this.aimError(t), { hit: !!hit, part: hit ? hit.part : null, mode: this.mode.id }));
+      log.push(Object.assign(this.aimError(t), { hit: !!hit, part: hit ? hit.part : null, mode: this.mode.id,
+        speed: this.speedPct(), n: this.spray.n }));
       if (log.length > 1500) log.shift();
     }
 
@@ -164,25 +181,105 @@
     }
 
     /* 십자선 위치에 닿는 타겟과 부위 */
-    hitAt(onlyVisible) {
+    hitAt(onlyVisible, oyaw = 0, opitch = 0) {
       const list = this.targets.slice().sort((a, b) => a.d - b.d);
+      const aim = this.aimPoint(oyaw, opitch);
+      if (!aim) return null;
       for (const t of list) {
         if (onlyVisible && !t.vis) continue;
         const p = this.targetPoint(t);
         if (!p) continue;
         const s = p.s;
-        if (this.wallBlocks(t)) continue;
+        if (this.wallBlocks(t, oyaw, opitch)) continue;
         if (t.kind === 'orb') {
           const r = t.r * s;
-          if ((this.cx - p.x) ** 2 + (this.cy - p.y) ** 2 <= r * r) return { t, part: 'head' };
+          if ((aim.x - p.x) ** 2 + (aim.y - p.y) ** 2 <= r * r) return { t, part: 'head' };
         } else {
           for (const b of BOT) {
             const corners = this.botCorners(t, b);
-            if (corners && this.pointInPolygon(this.cx, this.cy, corners)) return { t, part: b.part };
+            if (corners && this.pointInPolygon(aim.x, aim.y, corners)) return { t, part: b.part };
           }
         }
       }
       return null;
+    }
+
+    /* 탄이 실제로 향하는 화면 위치. 반동·이동 오차가 없으면 조준선 그대로다. */
+    aimPoint(oyaw = 0, opitch = 0) {
+      if (!oyaw && !opitch) return { x: this.cx, y: this.cy };
+      return this.project(this.yaw + oyaw, Math.max(-89, Math.min(89, this.pitch + opitch)));
+    }
+
+    /* 엄폐물: z 가 일정한 수직 판 { x0, x1, z, h }. 기존 대기샷의 벽도 같은 형식으로 본다. */
+    coverList() {
+      if (!this.wall) return this.covers;
+      const x = Math.tan(rad(this.wall.az)) * this.wall.d, end = this.wall.side * 36;
+      return this.covers.concat({ x0: Math.min(x, end), x1: Math.max(x, end), z: this.wall.d, h: 3.6, legacy: true });
+    }
+
+    /* 두 점을 잇는 선분이 엄폐물에 막히는지 */
+    segmentBlocked(ax, ay, az, bx, by, bz) {
+      for (const c of this.coverList()) {
+        if ((az - c.z) * (bz - c.z) >= 0) continue;
+        const k = (c.z - az) / (bz - az), x = ax + (bx - ax) * k, y = ay + (by - ay) * k;
+        if (x >= c.x0 && x <= c.x1 && y >= 0 && y <= c.h) return true;
+      }
+      return false;
+    }
+
+    /* 내 눈에서 봇 머리가 보이는지 (edge: 머리 중심에서 좌우로 벗어난 거리 m) */
+    seesHead(t, edge = 0) {
+      const p = this.targetPosition(t);
+      return !this.segmentBlocked(this.pos.x, this.eyeHeight, this.pos.z, p.x + edge, p.y, p.z);
+    }
+    /* 봇이 내 몸을 볼 수 있는지. 어깨(몸 폭 0.25m)는 눈보다 먼저 드러난다. */
+    seenBy(t) {
+      const p = this.targetPosition(t);
+      for (const dx of [-0.25, 0, 0.25]) if (!this.segmentBlocked(p.x, p.y, p.z, this.pos.x + dx, 1.35, this.pos.z)) return true;
+      return false;
+    }
+
+    speedPct() { return Math.abs(this.vx) / MOVE.run; }
+
+    /* A/D 좌우 이동. Shift 는 걷기. 반대 키를 누르면 조금 더 빨리 멈춘다(카운터 스트레이프). */
+    movePlayer(dt) {
+      const k = this.keys, dir = (k.d ? 1 : 0) - (k.a ? 1 : 0), max = k.shift ? MOVE.walk : MOVE.run;
+      const toward = (v, goal, step) => v < goal ? Math.min(goal, v + step) : Math.max(goal, v - step);
+      const was = this.speedPct();
+      if (dir && this.vx * dir < 0) this.vx += dir * MOVE.run / MOVE.counter * dt;
+      else if (dir) this.vx = toward(this.vx, dir * max, MOVE.run / (Math.abs(this.vx) > max ? MOVE.release : MOVE.accel) * dt);
+      else this.vx = toward(this.vx, 0, MOVE.run / MOVE.release * dt);
+      let x = this.pos.x + this.vx * dt;
+      const b = this.bounds;
+      if (b && (x < b.x0 || x > b.x1)) { x = Math.max(b.x0, Math.min(b.x1, x)); this.vx = 0; }
+      this.pos.x = x;
+      const now = this.speedPct();
+      if (now >= 0.8) this.lastRun = this.t;
+      if (was > MOVE.dead && now <= MOVE.dead) this.stopAt = this.t;
+    }
+
+    /* 이번 탄의 조준선 대비 편차(°). 이동 오차는 원뿔 안에서 고르게 퍼진다. */
+    bulletOffset() {
+      const sp = this.spray, f = this.speedPct();
+      if (this.t - sp.last > GUN.reset) { sp.n = 0; sp.dir = Math.random() < 0.5 ? -1 : 1; }
+      const n = sp.n;
+      let cone = GUN.base + (this.mode.recoil ? Math.min(n, 10) * 0.1 : 0);
+      if (f > MOVE.walkPct) cone += MOVE.walkErr + (f - MOVE.walkPct) / (1 - MOVE.walkPct) * (MOVE.runErr - MOVE.walkErr);
+      else if (f > MOVE.dead) cone += MOVE.walkErr;
+      const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * cone;
+      let ox = Math.cos(a) * r, oy = Math.sin(a) * r;
+      if (this.mode.recoil) {
+        oy += GUN.rise[Math.min(n, GUN.rise.length - 1)];
+        if (n >= 7) ox += sp.dir * 1.5 * Math.sin((n - 6) * 0.5);
+      }
+      sp.n = n + 1; sp.last = this.t;
+      return { ox, oy, n, speed: f };
+    }
+
+    /* 봇에게 맞았을 때: 화면이 붉어진다 */
+    hurt() {
+      this.hurtT = 0.45; A.audio.resetStreak(); this.kstreak = 0;
+      if (A.audio.hurt) A.audio.hurt();
     }
 
     wallEdge() {
@@ -191,18 +288,24 @@
       return p ? { x: p.x, side: this.wall.side } : null;
     }
 
-    wallBlocks(t) {
-      if (!this.wall) return false;
-      const wall = this.wall, forward = Math.cos(rad(this.yaw)) * Math.cos(rad(this.pitch));
+    wallBlocks(t, oyaw = 0, opitch = 0) {
+      const covers = this.coverList();
+      if (!covers.length) return false;
+      const yaw = rad(this.yaw + oyaw), pitch = rad(this.pitch + opitch), forward = Math.cos(yaw) * Math.cos(pitch);
       if (forward <= 0) return false;
-      const distance = wall.d / forward, x = Math.sin(rad(this.yaw)) * Math.cos(rad(this.pitch)) * distance;
-      const y = this.eyeHeight + Math.sin(rad(this.pitch)) * distance;
-      const edge = Math.tan(rad(wall.az)) * wall.d;
-      return this.targetPosition(t).z > wall.d && (x-edge)*wall.side >= 0 && Math.abs(x) <= 36 && y >= 0 && y <= 3.6;
+      const tz = this.targetPosition(t).z;
+      for (const c of covers) {
+        const dz = c.z - this.pos.z;
+        if (dz <= 0 || tz <= c.z) continue;
+        const distance = dz / forward, x = this.pos.x + Math.sin(yaw) * Math.cos(pitch) * distance;
+        const y = this.eyeHeight + Math.sin(pitch) * distance;
+        if (x >= c.x0 && x <= c.x1 && y >= 0 && y <= c.h) return true;
+      }
+      return false;
     }
 
     /* 탄창·연사 속도가 있는 총을 골랐으면 그 총 (칼 등은 null) */
-    gun() { const w = A.weapon; return w && w.rate ? w : null; }
+    gun() { const w = A.weapon; return w && w.rate ? w : (this.mode && this.mode.gun ? { rate: GUN.rate } : null); }
 
     reload() {
       const w = this.gun();
@@ -214,18 +317,24 @@
       if (this.cool > 0 || this.reloading > 0) return;
       if (w && this.ammo <= 0) { this.reload(); return; }
       if (w) this.ammo--;
-      if (w && this.muzzle) this.tracers.push({ t: 0.075, life: 0.075, x1: this.muzzle.x, y1: this.muzzle.y, x2: this.cx, y2: this.cy });
-      this.cool = w ? Math.max(0.05, 1 / w.rate) : 0.09;
+      // 실전 모드는 초탄 오차·이동 오차·반동을 적용한다. 기본기 모드는 조준선 그대로 맞는다.
+      const off = this.mode.gun ? this.bulletOffset() : { ox: 0, oy: 0, n: 0, speed: 0 };
+      const aim = this.aimPoint(off.ox, off.oy) || { x: this.cx, y: this.cy };
+      if (w && this.muzzle) this.tracers.push({ t: 0.075, life: 0.075, x1: this.muzzle.x, y1: this.muzzle.y, x2: aim.x, y2: aim.y });
+      this.cool = w ? Math.max(0.05, 1 / (this.mode.gun ? GUN.rate : w.rate)) : 0.09;
       this.kick = Math.min(1, this.kick + 0.7);
       this.stats.shots++;
-      const hit = this.hitAt(true);
+      const hit = this.hitAt(true, off.ox, off.oy);
+      this.shot = { speed: off.speed, n: off.n, sinceStop: this.t - this.stopAt, sinceRun: this.t - this.lastRun, hit: !!hit };
+      if (this.mode.gun) this.impacts.push({ t: 1.4, yaw: this.yaw + off.ox, pitch: this.pitch + off.oy, hit: !!hit });
       this.logShot(hit);
+      if (this.mode.onShot) this.mode.onShot(this, this.shot, hit);
       if (w && this.ammo <= 0) this.reload();
-      if (!hit) { A.audio.resetStreak(); if (this.mode.onMiss) this.mode.onMiss(this); return; }  // 한 발이라도 놓치면 킬 소리는 1킬부터
+      if (!hit) { A.audio.resetStreak(); this.kstreak = 0; if (this.mode.onMiss) this.mode.onMiss(this); return; }  // 한 발이라도 놓치면 킬 소리는 1킬부터
 
       const { t, part } = hit;
       this.stats.hits++;
-      t.hp -= t.kind === 'orb' ? 1 : (part === 'head' ? 100 : 34);
+      t.hp -= t.kind === 'orb' ? 1 : (part === 'head' ? 160 : (this.mode.gun ? 40 : 34));
       if (t.kind === 'bot') {
         const p = this.targetPoint(t);
         if (p) this.pops.push({ t: 0.7, x: p.x + (Math.random() - 0.5) * 20, y: p.y + (part === 'head' ? -0.55 : 0.1) * p.s, text: part === 'head' ? '160' : '40', head: part === 'head' });
@@ -236,6 +345,8 @@
         this.stats.ttk += this.t - t.born;
         this.stats.score += part === 'head' ? 150 : 100;
         A.audio.kill(part === 'head');
+        this.kstreak = Math.min(5, (this.kstreak || 0) + 1);  // 빗나가거나 맞기 전까지 이어진 킬 수 (최대 5단계)
+        this.banner = { t: 1.25, n: this.kstreak, head: part === 'head' };
         this.marks.push({ t: 0.22, kill: true });
         this.feed.push({ t: 4, head: part === 'head' });
         if (this.feed.length > 4) this.feed.shift();
@@ -252,10 +363,15 @@
     update(dt) {
       this.t += dt;
       this.cool = Math.max(0, this.cool - dt);
+      if (this.mode.move) this.movePlayer(dt);
       if (this.mouseDown && !this.mode.hold && this.mode.auto) this.fire();
       this.mode.update(this, dt);
+      this.hurtT = Math.max(0, this.hurtT - dt);
+      if (this.banner && (this.banner.t -= dt) <= 0) this.banner = null;
+      this.impacts = this.impacts.filter((m) => (m.t -= dt) > 0);
       for (const t of this.targets) {
         if (t.flash) t.flash = Math.max(0, t.flash - dt);
+        if (t.muzzle) t.muzzle = Math.max(0, t.muzzle - dt);
         // 좌우 각속도(°/s): 움직이는 타겟을 앞서/뒤처져 쐈는지 판단할 때 쓴다
         const az = this.targetAngles(t).az;
         if (t.lastAz != null && dt > 0) t.vaz = t.vaz == null ? (az - t.lastAz) / dt : t.vaz * 0.7 + ((az - t.lastAz) / dt) * 0.3;
@@ -306,7 +422,8 @@
     botCorners(t, b, grow = 0) {
       const p = this.targetPosition(t), [x0, y0, x1, y1] = b.r;
       // 각 봇은 카메라 위치를 향하는 수직 평면. 시점을 위아래로 돌려도 발은 바닥에 고정된다.
-      const right = { x: Math.cos(rad(t.az)), z: -Math.sin(rad(t.az)) };
+      const face = Math.atan2(p.x - this.pos.x, p.z - this.pos.z);
+      const right = { x: Math.cos(face), z: -Math.sin(face) };
       const points = [[x0 - grow, y0 - grow], [x1 + grow, y0 - grow], [x1 + grow, y1 + grow], [x0 - grow, y1 + grow]]
         .map(([x, y]) => {
           // 앉기는 머리 크기를 줄이지 않고 다리를 접어 발이 계속 바닥에 닿게 한다.
@@ -452,16 +569,18 @@
 
     render() {
       const { ctx } = this;
-      this.background();
-      if (A.cfg.bg !== 'grid') for (const t of this.targets) if (t.vis) this.drawShadow(t);
-      let wallDrawn = false;
-      for (const t of this.targets.slice().sort((a, b) => b.d - a.d)) {
-        if (this.wall && !wallDrawn && this.targetPosition(t).z < this.wall.d) { this.drawWall(); wallDrawn = true; }
-        if (!t.vis) continue;
-        if (t.kind === 'orb') this.drawOrb(t); else this.drawBot(t);
-      }
-      if (!wallDrawn) this.drawWall();
+      // 3D 장면이 켜져 있으면 공간·봇은 WebGL 이 그리고, 이 캔버스는 투명한 HUD 층이 된다.
+      this.gl = !!(A.scene3d && A.scene3d.active && A.scene3d.active());
+      if (this.gl) { ctx.clearRect(0, 0, this.W, this.H); A.scene3d.render(this); }
+      else this.drawWorld();
+      this.drawImpacts(ctx);
       if (this.mode.draw) this.mode.draw(this, ctx);
+      if (this.mode.move) this.drawSpeed(ctx);
+      if (this.hurtT > 0) {
+        const g = ctx.createRadialGradient(this.cx, this.cy, this.H * 0.2, this.cx, this.cy, this.H * 0.75);
+        g.addColorStop(0, 'rgba(255,40,50,0)'); g.addColorStop(1, 'rgba(255,40,50,' + Math.min(0.75, this.hurtT * 2.2) + ')');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, this.W, this.H);
+      }
       // 히트마커
       for (const m of this.marks) {
         const a = Math.min(1, m.t * 6), n = m.kill ? 12 : 8, g = 5;
@@ -474,11 +593,108 @@
         ctx.stroke();
       }
       this.drawPops(ctx);
+      this.drawBanner(ctx);
       this.drawWeapon(ctx);
       this.drawTracers(ctx);
       A.crosshair.draw(ctx, this.cx, this.cy, A.crossData, A.cfg.chScale);
       this.drawFeed(ctx);
       this.drawOrientation(ctx);
+    }
+
+    /* 킬 배너. 스킨 매니페스트에 banners 이미지가 있으면 그것을, 없으면 직접 그린 배너를 쓴다.
+       (직접 그린 배너는 이 프로젝트 고유 도안이며 게임 원본 배너가 아니다) */
+    drawBanner(ctx) {
+      const b = this.banner;
+      if (!b || A.cfg.banner === 'off') return;
+      const k = this.H / 1080, age = 1.25 - b.t;
+      const pop = age < 0.12 ? 0.6 + 0.4 * (age / 0.12) : 1, alpha = Math.min(1, b.t / 0.3);
+      const x = this.cx, y = this.H * 0.76, r = 54 * k * pop;
+      const imgs = A.weapon && A.weapon.banners, img = imgs && imgs[Math.min(b.n, imgs.length) - 1];
+      ctx.save(); ctx.globalAlpha = alpha;
+      if (img && img.complete && img.naturalWidth) {
+        const h = 190 * k * pop, w = h * img.naturalWidth / img.naturalHeight;
+        ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
+        ctx.restore(); return;
+      }
+      const hot = b.head ? '255,205,96' : '255,84,96';
+      ctx.fillStyle = 'rgba(10,14,20,.82)';
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 4 * k; ctx.strokeStyle = 'rgba(' + hot + ',.95)';
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+      // 바깥 고리: 처음에 퍼졌다 사라진다
+      ctx.lineWidth = 2 * k; ctx.strokeStyle = 'rgba(' + hot + ',' + Math.max(0, 0.7 - age * 2.2) + ')';
+      ctx.beginPath(); ctx.arc(x, y, r + age * 90 * k, 0, Math.PI * 2); ctx.stroke();
+      // 가운데 마름모 (헤드샷은 채우고, 몸샷은 테두리만)
+      const d = 20 * k * pop;
+      ctx.beginPath(); ctx.moveTo(x, y - d); ctx.lineTo(x + d * 0.72, y); ctx.lineTo(x, y + d); ctx.lineTo(x - d * 0.72, y); ctx.closePath();
+      ctx.fillStyle = 'rgba(' + hot + ',1)'; ctx.strokeStyle = 'rgba(' + hot + ',1)'; ctx.lineWidth = 3 * k;
+      if (b.head) ctx.fill(); else ctx.stroke();
+      // 연속 킬 수만큼 위쪽에 점이 켜진다
+      for (let i = 0; i < 5; i++) {
+        const a = -Math.PI / 2 + (i - 2) * 0.42, px = x + Math.cos(a) * (r + 16 * k), py = y + Math.sin(a) * (r + 16 * k);
+        ctx.fillStyle = i < b.n ? 'rgba(' + hot + ',1)' : 'rgba(255,255,255,.22)';
+        ctx.beginPath(); ctx.arc(px, py, 5 * k, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(240,244,246,.95)'; ctx.textAlign = 'center';
+      ctx.font = '700 ' + Math.round(17 * k) + 'px system-ui, sans-serif';
+      ctx.fillText((b.head ? '헤드샷 ' : '') + b.n + '킬', x, y + r + 34 * k);
+      ctx.restore();
+    }
+
+    drawCover(c) {
+      const { x0, x1, z, h } = c;
+      this.polygon([[x0,0,z],[x1,0,z],[x1,h,z],[x0,h,z]], '#3b4b57', '#778994');
+      for (const [x, s] of [[x0, 1], [x1, -1]]) {
+        if (Math.abs(x) > 30) continue;
+        this.polygon([[x,0,z-.015],[x+s*.08,0,z-.015],[x+s*.08,h,z-.015],[x,h,z-.015]], '#a7b3b5');
+        if (A.cfg.guide) this.polygon([[x,1.58,z-.025],[x+s*.45,1.58,z-.025],[x+s*.45,1.62,z-.025],[x,1.62,z-.025]], '#deb17b');
+      }
+    }
+
+    /* 봇이 올라서는 상자 { x, z, w, h } */
+    drawProp(b) {
+      const x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z - b.w / 2, z1 = b.z + b.w / 2, h = b.h;
+      for (const x of [x0, x1]) this.polygon([[x,0,z0],[x,0,z1],[x,h,z1],[x,h,z0]], '#6f5a41', '#3d3226');
+      this.polygon([[x0,h,z0],[x1,h,z0],[x1,h,z1],[x0,h,z1]], '#a8895f', '#3d3226');
+      this.polygon([[x0,0,z0],[x1,0,z0],[x1,h,z0],[x0,h,z0]], '#8d7350', '#3d3226');
+    }
+
+    drawWorld() {
+      this.background();
+      if (A.cfg.bg !== 'grid') for (const t of this.targets) if (t.vis && !t.lift) this.drawShadow(t);
+      const items = this.targets.filter((t) => t.vis).map((t) => ({ z: this.targetPosition(t).z, t }))
+        .concat(this.covers.map((c) => ({ z: c.z, c })), this.props.map((b) => ({ z: b.z + 0.01, b })));
+      if (this.wall) items.push({ z: this.wall.d, wall: true });
+      items.sort((a, b) => b.z - a.z);
+      for (const it of items) {
+        if (it.wall) this.drawWall(); else if (it.c) this.drawCover(it.c); else if (it.b) this.drawProp(it.b);
+        else if (it.t.kind === 'orb') this.drawOrb(it.t); else this.drawBot(it.t);
+      }
+    }
+
+    /* 탄착점: 반동과 이동 오차로 탄이 조준선에서 얼마나 벗어났는지 보여 준다 */
+    drawImpacts(ctx) {
+      const k = Math.max(1, this.H / 1080);
+      for (const m of this.impacts) {
+        const p = this.project(m.yaw, Math.max(-89, Math.min(89, m.pitch)));
+        if (!p) continue;
+        ctx.globalAlpha = Math.min(1, m.t * 1.5);
+        ctx.fillStyle = m.hit ? '#ffe9a8' : '#ff8a5c';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2.6 * k, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    /* 이동 속도 막대: 초록(30% 이하)에서만 초탄이 정확하다 */
+    drawSpeed(ctx) {
+      const k = Math.max(1, this.H / 1080), f = this.speedPct(), w = 180 * k, x = this.cx - w / 2, y = this.cy + 150 * k;
+      ctx.fillStyle = 'rgba(12,22,29,.6)'; ctx.fillRect(x, y, w, 8 * k);
+      ctx.fillStyle = f <= MOVE.dead ? '#6be08b' : f <= MOVE.walkPct ? '#f0b44c' : '#ff4655';
+      ctx.fillRect(x, y, w * Math.min(1, f), 8 * k);
+      ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillRect(x + w * MOVE.dead - k, y - 3 * k, 2 * k, 14 * k);
+      ctx.font = '500 ' + Math.round(12 * k) + 'px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(220,230,232,.85)';
+      ctx.fillText(f <= MOVE.dead ? '정확' : f <= MOVE.walkPct ? '걷기 오차' : '달리기 오차', this.cx, y + 26 * k);
     }
 
     drawOrientation(ctx) {
@@ -585,4 +801,5 @@
 
   A.Game = Game;
   A.util = { rand, pick, wrap, rad };
+  A.MOVE = MOVE; A.GUN = GUN; A.BOT = BOT;
 })(window.Aim = window.Aim || {});

@@ -92,25 +92,60 @@
 
   /* ---- 헤드 라인: 머리 높이에 늘어선 봇 ---- */
   modes.push({
-    id: 'headline', icon: '☰', name: '헤드라인', desc: '머리 높이로 줄지어 선 봇의 머리를 클릭해요. 크로스헤어 높이 유지 연습이에요.',
+    id: 'headline', icon: '☰', name: '헤드라인', desc: '거리가 제각각인 봇의 머리만 클릭해요. 가끔 앉거나 상자 위에 선 봇도 나와요. 조준선 높이를 지키는 연습이에요.',
+    guide: {
+      points: ['평지에서는 거리가 달라도 머리 높이가 화면의 같은 가로줄에 놓여요. 조준선을 그 줄에서 떼지 마세요.',
+        '봇 사이를 옮길 때 좌우로만 움직여요. 위아래로 흔들리면 높이가 무너진 거예요.',
+        '앉은 봇·상자 위 봇처럼 높이가 다른 자리만 따로 기억해 두세요.'],
+      src: [['Dignitas · 크로스헤어 플레이스먼트', 'https://dignitas.gg/articles/improving-aim-in-valorant-crosshair-placement']],
+    },
     setup(g) {
-      g.m = { queue: [] };
-      for (let i = 0; i < 5; i++) { const b = g.bot((i - 2) * 7, 0, 9); b.slot = (i - 2) * 7; }
+      g.m = { queue: [], offs: [] };
+      for (let i = 0; i < 5; i++) this.spawn(g, (i - 2) * 9);
+    },
+    spawn(g, slot) {
+      const d = rand(7, 20), r = Math.random(), b = g.bot(slot + rand(-2, 2), 0, d);
+      b.slot = slot;
+      if (r < 0.15) b.crouch = 0.4;
+      else if (r < 0.3) {
+        b.lift = 0.8;
+        b.prop = { x: Math.tan(b.az * Math.PI / 180) * d, z: d, w: 1.1, h: 0.8 };
+        g.props.push(b.prop);
+      }
     },
     update(g) { flushQueue(g); },
+    onMiss(g) {
+      // 빗나간 탄이 머리 높이에서 얼마나 벗어났는지(°). 가장 가까운 봇 기준
+      const last = g.stats.shotLog[g.stats.shotLog.length - 1];
+      if (last) g.m.offs.push(last.ey);
+    },
     onKill(g, t) {
-      later(g, 0.35, () => { const b = g.bot(t.slot, 0, 9); b.slot = t.slot; });
+      if (t.prop) g.props = g.props.filter((p) => p !== t.prop);
+      later(g, 0.35, () => this.spawn(g, t.slot));
+    },
+    summary(g) {
+      const o = g.m.offs;
+      if (!o.length) return [];
+      const avg = o.reduce((a, b) => a + b, 0) / o.length;
+      return [['빗나간 탄의 높이', (avg >= 0 ? '머리 위 ' : '머리 아래 ') + Math.abs(avg).toFixed(1) + '°']];
     },
   });
 
   /* ---- 대기샷: 벽 뒤에서 튀어나오는 봇을 각도를 잡고 기다렸다 쏜다 ---- */
   modes.push({
     id: 'hold', icon: '▌', name: '대기샷', desc: '칼 달리기부터 앉기까지, 실제 이동 속도를 기준으로 봇이 벽 뒤에서 나와요. 모서리에 조준선을 두고 머리를 맞혀 보세요.',
+    guide: {
+      points: ['조준선을 모서리에 딱 붙이지 말고 조금 띄워요. 띄울 간격 ≈ 상대 속도 × 내 반응 시간이에요.',
+        '빠른 상대(칼 달리기)일수록 더 띄우고, 걷거나 앉아 나오는 상대는 모서리에 가깝게 둬요.',
+        '조준선은 움직이지 않고 기다리다가 머리가 조준선에 들어오는 순간 클릭해요.'],
+      src: [['MetaBot.GG · 피킹 가이드 (각 잡는 쪽의 반응 시간)', 'https://metabot.gg/en/valorant/guides/valorant-peeking-guide-jiggle-wide-shoulder'],
+        ['이동 속도 실측 자료 (vrfkit)', 'https://github.com/yakisoba0728/vrfkit/blob/main/docs/DATA.md']],
+    },
     setup(g) {
       const side = Math.random() < 0.5 ? 1 : -1;
       g.wall = { az: 0, side, d: 12 };
       g.yaw = -side * 0.35; g.pitch = 0;
-      g.m = { queue: [], side, reach: 26, speed: 0, phase: 'wait', until: g.t + rand(1, 2.4), bot: null, peekAt: 0, rounds: 0, misses: 0 };
+      g.m = { queue: [], side, reach: 26, speed: 0, phase: 'wait', until: g.t + rand(1, 2.4), bot: null, peekAt: 0, rounds: 0, misses: 0, gaps: [], gapped: true };
       g.stats.extra.reactions = [];
     },
     update(g, dt) {
@@ -122,9 +157,11 @@
         m.bot = g.bot(Math.atan2(m.x, 12.5) * 180 / Math.PI, 0, 12.5);
         m.bot.crouch = m.profile.crouch || 0;
         // 벽 너머에서 머리의 앞쪽 가장자리가 보이기 시작하는 시점을 속도로 계산한다.
-        m.phase = 'out'; m.peekAt = g.t + (.65 - .085) / m.speed;
+        m.phase = 'out'; m.peekAt = g.t + (.65 - .085) / m.speed; m.gapped = false;
       } else if (m.phase === 'out') {
         // 각도/초가 아닌 월드의 m/s로 이동시켜 거리·화면 위치에 따라 속도가 달라지지 않게 한다.
+        // 머리가 보이기 시작한 순간 조준선이 모서리에서 얼마나 떨어져 있었는지(° → m)
+        if (!m.gapped && g.t >= m.peekAt) { m.gapped = true; m.gaps.push(Math.tan(-m.side * g.yaw * Math.PI / 180) * 12); }
         m.x -= m.side * m.speed * dt;
         b.az = Math.atan2(m.x, b.d) * 180 / Math.PI;
         if (b.az * m.side <= -m.reach) {
@@ -147,7 +184,18 @@
     summary(g) {
       const r = g.stats.extra.reactions;
       const avg = r.length ? Math.round(r.reduce((a, b) => a + b, 0) / r.length) : 0;
-      return [['평균 반응', r.length ? avg + 'ms' : '-'], ['가장 빠른 반응', r.length ? Math.min(...r) + 'ms' : '-'], ['등장한 봇', String(g.m.rounds + (g.m.bot ? 1 : 0))]];
+      const gaps = g.m.gaps, gap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0;
+      return [['평균 반응', r.length ? avg + 'ms' : '-'], ['가장 빠른 반응', r.length ? Math.min(...r) + 'ms' : '-'], ['등장한 봇', String(g.m.rounds + (g.m.bot ? 1 : 0))],
+        ['모서리에서 띄운 간격', gaps.length ? gap.toFixed(2) + 'm' : '-']];
+    },
+    tip(g) {
+      const r = g.stats.extra.reactions, gaps = g.m.gaps;
+      if (r.length < 3 || !gaps.length) return '';
+      const react = r.reduce((a, b) => a + b, 0) / r.length / 1000, gap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+      const want = 5.4 * Math.min(react, 0.3);
+      if (gap < 0.1) return '조준선이 모서리에 붙어 있어요. 밴달 달리기 기준 반응 ' + Math.round(react * 1000) + 'ms 면 약 ' + want.toFixed(1) + 'm 띄워야 머리가 조준선으로 들어와요.';
+      if (gap > want * 1.8) return '조준선을 모서리에서 ' + gap.toFixed(1) + 'm 띄웠어요. 걷거나 앉아 나오는 상대에게는 너무 넓으니 조금 좁혀 보세요.';
+      return '';
     },
   });
 
