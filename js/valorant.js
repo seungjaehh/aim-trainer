@@ -325,62 +325,39 @@
   });
 
   /* ---- 맵 단차 헤드라인: 실제 발로란트 맵의 자리에서 높이가 다른 적의 머리 높이를 미리 잡는다 ----
-     · 자리 이름과 수평 좌표(cm)는 valorant-api.com/v1/maps 의 callouts 값이다 (2026-11-13 조회, 비공식 커뮤니티 API).
-       좌표는 각 구역의 대표점 하나라서, 거리·방향은 "구역 중심 사이" 기준이다.
-     · 높이(h, m)는 공개된 수치가 없어 추정값이다. 벽·엄폐물·시야선도 재현하지 않았다. 1:1 맵이 아니다. */
-  const stairs = (x) => Math.max(0, Math.min(5, Math.floor((x + 2.4) / 0.8) + 1)) * 0.3;   // 0.3m 단 5개 → 1.5m
-  const ramp = (x) => stairs(x) * 2;                                                        // 0.6m 단 5개 → 3m
-  // from: [이름, x, y, 높이 | 'ramp'], to: [[이름, x, y, 높이], …]. to 의 첫 자리가 정면이다.
-  const MAP_SPOTS = [
-    { id: 'haven-a-long', map: '헤이븐', from: ['A 롱', 6210, -6901, 0], to: [['A 사이트', 6309, -9226, 0], ['A 타워(헤븐)', 6721, -10473, 3]] },
-    { id: 'haven-a-tower', map: '헤이븐', from: ['A 타워(헤븐)', 6721, -10473, 3], to: [['A 사이트', 6309, -9226, 0], ['A 롱', 6210, -6901, 0]] },
-    { id: 'lotus-a-main', map: '로터스', from: ['A 메인', 5288, 4160, 0], to: [['A 사이트', 7736, 5557, 0], ['A 트리', 6150, 5557, 0], ['A 탑', 9260, 5046, 2.5]] },
-    { id: 'lotus-b-main', map: '로터스', from: ['B 메인', 4877, -48, 0], to: [['B 사이트', 6368, 668, 0], ['B 어퍼', 7683, 1517, 2.5]] },
-    { id: 'split-a-main', map: '스플릿', from: ['A 메인', 6280, -4493, 0], to: [['A 사이트', 6589, -6761, 0], ['A 래프터', 5435, -6258, 3], ['A 타워(헤븐)', 4637, -6748, 3], ['A 백', 7345, -7858, 0]] },
-    { id: 'split-a-ramps', map: '스플릿', from: ['A 램프', 4330, -4750, 'ramp'], to: [['A 타워(헤븐)', 4637, -6748, 3], ['A 래프터', 5435, -6258, 3]] },
-    { id: 'split-b-garage', map: '스플릿', from: ['B 개러지', -2191, -3848, 0], to: [['B 사이트', -2167, -6265, 0], ['B 래프터', -637, -6071, 3], ['B 타워(헤븐)', 169, -5290, 3], ['B 백', -3107, -7417, 0]] },
-    { id: 'ascent-a-main', map: '어센트', from: ['A 메인', 5322, -4710, 0], to: [['A 사이트', 6154, -6626, 0], ['A 래프터(헤븐)', 6130, -8210, 3]] },
-    { id: 'ascent-a-rafters', map: '어센트', from: ['A 래프터(헤븐)', 6130, -8210, 3], to: [['A 사이트', 6154, -6626, 0], ['A 메인', 5322, -4710, 0]] },
-  ];
-  /* 맵 좌표 → 훈련장 좌표. 미니맵 식(u = y·xMultiplier, v = x·yMultiplier, yMultiplier < 0)대로 위에서 보면 x 가 위, y 가 오른쪽이다. */
-  function buildLayout(S) {
-    const [fn, fx, fy, fh] = S.from, t0 = S.to[0];
-    const len = Math.hypot(t0[1] - fx, t0[2] - fy), ux = (t0[1] - fx) / len, uy = (t0[2] - fy) / len;
-    const r1 = (v) => Math.round(v * 10) / 10;
-    const spots = S.to.map(([name, x, y, h]) => {
-      const dx = x - fx, dy = y - fy;
-      return { name, x: r1((-uy * dx + ux * dy) / 100), z: r1((ux * dx + uy * dy) / 100), h, dist: Math.round(Math.hypot(dx, dy) / 100) };
-    });
-    const props = spots.filter((s) => s.h).map((s) => ({ x: s.x, z: s.z + 0.8, w: 5, d: 3, h: s.h, plat: true }));
-    let ground = null;
-    if (fh === 'ramp') {
-      ground = ramp;   // 단 i: x = -2.4 + 0.8 i 부터 오른쪽 끝(4.2)까지
-      for (let i = 0; i < 5; i++) props.push({ x: (-2.4 + 0.8 * i + 4.2) / 2, z: 0, w: 4.2 - (-2.4 + 0.8 * i), d: 2.4, h: (i + 1) * 0.6, plat: true });
-    } else if (fh) {
-      ground = () => fh;
-      props.push({ x: 0, z: -0.6, w: 9, d: 3, h: fh, plat: true });
-    }
-    return { id: S.id, map: S.map, from: fn, name: S.map + ' · ' + fn + ' → ' + t0[0], ground, props, spots };
-  }
-  const LAYOUTS = MAP_SPOTS.map(buildLayout);
+     지형은 js/mapdata.js (tools/maps/build_mapdata.py 가 미니맵 이미지와 콜아웃 좌표에서 만든 것) 에서 온다.
+     · 실제 자료에서 온 것: 자리 이름과 수평 위치, 벽 윤곽, 층의 높낮이 순서, 상자 자리.
+     · 추정: 높이(m), 벽 높이. · 원작과 대조하지 않았다. 정확한 재현이 아니다.
+     자리마다 세 가지를 따로 둔다: collision(이동 충돌·사격 차폐), bots(적 자리), visual(겉모습).
+     visual 을 { kind: 'gltf', url } 로 바꾸면 충돌·적 자리는 그대로 두고 겉모습만 바뀐다. */
+  const stairs = (x) => Math.max(0, Math.min(5, Math.floor((x + 2.4) / 0.8) + 1)) * 0.3;   // 0.3m 단 5개 → 1.5m (테스트용 계단)
+  const LAYOUTS = (A.mapData || []).map((D) => ({
+    id: D.id, map: D.map, from: D.from, name: D.map + ' · ' + D.from, compared: D.compared === true,
+    base: D.collision.base, bounds: D.collision.bounds,
+    solids: D.collision.boxes.map(([x, z, w, d, h, k]) => ({ x, z, w, d, h, wall: k === 1, plat: k === 0 })),
+    spots: D.bots.spots, visual: D.visual || { kind: 'boxes' },
+  }));
   const PER_LAYOUT = 4;   // 한 자리에서 잡는 적 수
   modes.push({
     id: 'terrain', cat: 'val', icon: '◭', name: '맵 단차 헤드라인', move: true, gun: true,
-    desc: '헤이븐·로터스·스플릿·어센트의 실제 자리에서, 헤븐·래프터처럼 높이가 다른 곳의 적을 잡아요. 붉은 표시는 적이 설 바닥이에요. 거리는 실제 맵 좌표, 높이는 추정값이에요.',
+    desc: '헤이븐·로터스·스플릿·어센트의 실제 자리에서, 헤븐·래프터처럼 높이가 다른 곳의 적을 잡아요. 붉은 표시는 적이 설 바닥이에요. 벽과 층은 미니맵에서 읽었고 높이는 추정이에요. 원작과 대조하지 않았어요.',
     guide: {
       points: ['평지의 머리 높이 줄은 단차가 있으면 틀어져요. 적이 설 바닥에서 사람 키만큼 위를 기준으로 다시 잡으세요.',
         '같은 높이 차이라도 가까울수록 화면에서 더 많이 벗어나요. 가까운 헤븐은 크게, 먼 헤븐은 조금만 올려요.',
         '램프·계단을 오르내리면 내 눈 높이가 바뀌어요. 걸으면서 조준선을 계속 고쳐 잡으세요.',
-        '자리 사이 거리는 실제 맵의 구역 좌표를 따랐지만 높이는 추정이고 벽과 엄폐물은 없어요. 각도 감각은 실제 게임에서 다시 맞추세요.'],
+        '벽 윤곽과 층 구분은 미니맵에서 읽었지만 높이(m)는 추정이고 원작과 대조하지 않았어요. 각도 감각은 실제 게임에서 다시 맞추세요.'],
       src: [SRC.placement, SRC.aimlabs],
     },
     setup(g) { g.m = { queue: [], errs: { up: [], level: [], down: [] }, ttk: [], li: Math.floor(Math.random() * LAYOUTS.length) - 1, last: -1 }; this.layout(g); },
     layout(g) {
       const m = g.m, L = LAYOUTS[m.li = (m.li + 1) % LAYOUTS.length];
       m.L = L; m.left = PER_LAYOUT; m.last = -1;
-      g.props = L.props.slice(); g.ground = L.ground;
-      g.pos.x = 0; g.vx = 0; g.bounds = { x0: -3.2, x1: 3.2 };
-      g.base = L.ground ? L.ground(0) : 0;
+      g.solids = L.solids;                                        // 충돌·차폐
+      g.visual = L.visual;                                        // 겉모습
+      g.props = L.visual.kind === 'boxes' ? L.solids : [];        // 모델이 없으면 충돌 상자를 그대로 그린다
+      g.ground = null;
+      g.pos.x = 0; g.vx = 0; g.bounds = { x0: L.bounds[0], x1: L.bounds[1] };
+      g.base = L.base;
       note(g, L.name, '#8fe3ff');
       this.next(g, 1.2);
     },
@@ -411,7 +388,8 @@
     draw(g, ctx) {
       const m = g.m, k = Math.max(1, g.H / 1080), s = m.mark;
       label(g, ctx, m.L.name + ' (' + Math.min(PER_LAYOUT, PER_LAYOUT - m.left + 1) + '/' + PER_LAYOUT + ')',
-        s ? '다음 적: ' + s.name + ' · 약 ' + s.dist + 'm' + (s.h ? ' · 높이 약 ' + s.h + 'm(추정)' : '') : '거리는 실제 맵 좌표 · 높이는 추정 · 벽은 없어요');
+        s ? '다음 적: ' + s.name + ' · 약 ' + s.dist + 'm' + (s.h !== m.L.base ? ' · 바닥 높이 약 ' + s.h + 'm(추정)' : '')
+          : '벽·층은 미니맵 기준 · 높이는 추정' + (m.L.compared ? '' : ' · 원작 대조 안 함'));
       if (!s) return;
       const p = g.worldPoint(s.x, s.h + 0.03, s.z);   // 적이 설 바닥. 머리는 여기서 약 1.6m 위
       if (!p) return;
@@ -437,5 +415,5 @@
   });
 
   A.modes.push(...modes);
-  A.valorant = { SRC, BANDS, corner, WALL_Z, LAYOUTS, MAP_SPOTS, stairs };
+  A.valorant = { SRC, BANDS, corner, WALL_Z, LAYOUTS, stairs };
 })(window.Aim = window.Aim || {});

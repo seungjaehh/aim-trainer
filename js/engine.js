@@ -46,7 +46,7 @@
       this.cool = 0;
       this.kick = 0; this.feed = []; this.pops = []; this.tracers = [];
       this.ammo = Infinity; this.reloading = 0;
-      this.pos = { x: 0, z: 0 }; this.vx = 0; this.keys = {}; this.covers = []; this.props = [];
+      this.pos = { x: 0, z: 0 }; this.vx = 0; this.keys = {}; this.covers = []; this.props = []; this.solids = []; this.visual = null;
       this.impacts = []; this.spray = { n: 0, last: -9, dir: 1 }; this.hurtT = 0; this.bounds = null;
       this.lastRun = -9; this.stopAt = -9;
       this.resize();
@@ -125,7 +125,7 @@
       this.t = 0; this.cool = 0; this.yaw = 0; this.pitch = 0; this.banner = ''; this.over = false;
       this.kick = 0; this.feed = []; this.pops = []; this.tracers = []; this.reloading = 0;
       this.ammo = Infinity;
-      this.pos = { x: 0, z: 0 }; this.vx = 0; this.covers = []; this.props = []; this.bounds = null; this.base = 0; this.ground = null;
+      this.pos = { x: 0, z: 0 }; this.vx = 0; this.covers = []; this.props = []; this.solids = []; this.visual = null; this.bounds = null; this.base = 0; this.ground = null;
       this.impacts = []; this.spray = { n: 0, last: -9, dir: 1 }; this.hurtT = 0; this.lastRun = -9; this.stopAt = -9;
       mode.setup(this);
     }
@@ -227,7 +227,34 @@
         const k = (c.z - az) / (bz - az), x = ax + (bx - ax) * k, y = ay + (by - ay) * k;
         if (x >= c.x0 && x <= c.x1 && y >= 0 && y <= c.h) return true;
       }
+      return this.solidBlocked(ax, ay, az, bx, by, bz);
+    }
+
+    /* 충돌 상자 solids { x, z, w, d, h } (바닥부터 높이 h 까지 꽉 찬 상자) 가 선분을 막는지.
+       겉모습(props·visual)과는 따로 둔다. 벽·높은 바닥·엄폐물 모두 같은 형식이다. */
+    solidBlocked(ax, ay, az, bx, by, bz) {
+      const dx = bx - ax, dy = by - ay, dz = bz - az;
+      for (const b of this.solids) {
+        const hd = (b.d || b.w) / 2;
+        let t0 = 0, t1 = 1, hit = true;
+        for (const [o, d, lo, hi] of [[ax, dx, b.x - b.w / 2, b.x + b.w / 2], [az, dz, b.z - hd, b.z + hd], [ay, dy, -1, b.h]]) {
+          if (Math.abs(d) < 1e-9) { if (o <= lo || o >= hi) { hit = false; break; } continue; }
+          const u = (lo - o) / d, v = (hi - o) / d;
+          t0 = Math.max(t0, Math.min(u, v)); t1 = Math.min(t1, Math.max(u, v));
+          if (t0 >= t1) { hit = false; break; }
+        }
+        if (hit) return true;
+      }
       return false;
+    }
+    /* (x, z) 의 바닥 높이: 그 자리에 놓인 충돌 상자의 윗면 */
+    floorAt(x, z) {
+      let h = 0;
+      for (const b of this.solids) {   // 맞닿은 상자의 경계는 한쪽에만 속한다
+        const hw = b.w / 2, hd = (b.d || b.w) / 2;
+        if (b.h > h && x >= b.x - hw && x < b.x + hw && z >= b.z - hd && z < b.z + hd) h = b.h;
+      }
+      return h;
     }
 
     /* 내 눈에서 봇 머리가 보이는지 (edge: 머리 중심에서 좌우로 벗어난 거리 m) */
@@ -255,9 +282,12 @@
       let x = this.pos.x + this.vx * dt;
       const b = this.bounds;
       if (b && (x < b.x0 || x > b.x1)) { x = Math.max(b.x0, Math.min(b.x1, x)); this.vx = 0; }
+      // 이동 충돌: 몸 반폭(0.3 m) 앞의 바닥이 0.6 m 넘게 높으면(벽·높은 단) 못 간다
+      if (this.solids.length && x !== this.pos.x && this.floorAt(x + Math.sign(x - this.pos.x) * 0.3, this.pos.z) - this.base > 0.6) { x = this.pos.x; this.vx = 0; }
       this.pos.x = x;
       // 계단·경사: 바닥 높이를 따라 눈 높이가 부드럽게 오르내린다
-      if (this.ground) { const goal = this.ground(x), step = 6 * dt; this.base = Math.abs(goal - this.base) <= step ? goal : this.base + Math.sign(goal - this.base) * step; }
+      const ground = this.ground || (this.solids.length ? (v) => this.floorAt(v, this.pos.z) : null);
+      if (ground) { const goal = ground(x), step = 6 * dt; this.base = Math.abs(goal - this.base) <= step ? goal : this.base + Math.sign(goal - this.base) * step; }
       const now = this.speedPct();
       if (now >= 0.8) this.lastRun = this.t;
       if (was > MOVE.dead && now <= MOVE.dead) this.stopAt = this.t;
@@ -295,10 +325,14 @@
 
     wallBlocks(t, oyaw = 0, opitch = 0) {
       const covers = this.coverList();
-      if (!covers.length) return false;
+      if (!covers.length && !this.solids.length) return false;
       const yaw = rad(this.yaw + oyaw), pitch = rad(this.pitch + opitch), forward = Math.cos(yaw) * Math.cos(pitch);
       if (forward <= 0) return false;
       const tz = this.targetPosition(t).z;
+      if (this.solids.length && tz > this.pos.z) {   // 탄이 타겟 깊이에 닿기 전에 충돌 상자에 막히는지
+        const dist = (tz - this.pos.z) / forward;
+        if (this.solidBlocked(this.pos.x, this.eyeY, this.pos.z, this.pos.x + Math.sin(yaw) * Math.cos(pitch) * dist, this.eyeY + Math.sin(pitch) * dist, tz)) return true;
+      }
       for (const c of covers) {
         const dz = c.z - this.pos.z;
         if (dz <= 0 || tz <= c.z) continue;
@@ -659,7 +693,7 @@
     /* 봇이 올라서는 상자·단상 { x, z, w, h, d(앞뒤 길이, 없으면 w), plat(콘크리트 단상) } */
     drawProp(b) {
       const dd = b.d || b.w, x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z - dd / 2, z1 = b.z + dd / 2, h = b.h;
-      const c = b.plat ? ['#56636d', '#8d9aa3', '#6d7a84', '#2f3a42'] : ['#6f5a41', '#a8895f', '#8d7350', '#3d3226'];
+      const c = b.wall ? ['#3d4650', '#59636d', '#4a545e', '#252c33'] : b.plat ? ['#56636d', '#8d9aa3', '#6d7a84', '#2f3a42'] : ['#6f5a41', '#a8895f', '#8d7350', '#3d3226'];
       for (const x of [x0, x1]) this.polygon([[x,0,z0],[x,0,z1],[x,h,z1],[x,h,z0]], c[0], c[3]);
       if (h < this.eyeY) this.polygon([[x0,h,z0],[x1,h,z0],[x1,h,z1],[x0,h,z1]], c[1], c[3]);
       this.polygon([[x0,0,z0],[x1,0,z0],[x1,h,z0],[x0,h,z0]], c[2], c[3]);

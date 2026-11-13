@@ -146,6 +146,25 @@ function makeCover() {
   scene.add(g);
   return g;
 }
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x4d5863, roughness: 1 });       // 맵 벽
+/* 맵 겉모습 교체: game.visual = { kind: 'gltf', url, pos?, rotY?, scale? } 이면 그 모델을 불러와 보여 준다.
+   충돌(game.solids)과 적 자리는 건드리지 않는다. kind 가 'boxes' 면 game.props 상자만 그린다. */
+let mapModel = null, mapModelUrl = '';
+function syncVisual(v) {
+  const url = v && v.kind === 'gltf' && v.url ? v.url : '';
+  if (url === mapModelUrl) return;
+  if (mapModel) scene.remove(mapModel);
+  mapModel = null; mapModelUrl = url;
+  if (!url) return;
+  new GLTFLoader().loadAsync(url).then((g) => {
+    if (mapModelUrl !== url) return;
+    mapModel = g.scene;
+    if (v.pos) mapModel.position.set(v.pos[0], v.pos[1], -v.pos[2]);
+    if (v.rotY) mapModel.rotation.y = v.rotY;
+    if (v.scale) mapModel.scale.setScalar(v.scale);
+    scene.add(mapModel);
+  }).catch((e) => console.warn('맵 모델을 불러오지 못했습니다', url, e));
+}
 function makeProp() { const m = new THREE.Mesh(unit, propMat); scene.add(m); return m; }
 
 /* 필요한 만큼만 꺼내 쓰고 나머지는 숨긴다 */
@@ -213,8 +232,9 @@ function render(game) {
   take('cover', covers.length, makeCover);
   covers.forEach((c, i) => setCover(pools.cover[i], c[0], c[1], c[2], c[3], !!A.cfg.guide));
   take('prop', game.props.length, makeProp);
-  game.props.forEach((b, i) => { const m = pools.prop[i]; m.material = b.plat ? platMat : propMat; m.scale.set(b.w, b.h, b.d || b.w); m.position.set(b.x, b.h / 2, -b.z); });
+  game.props.forEach((b, i) => { const m = pools.prop[i]; m.material = b.wall ? wallMat : b.plat ? platMat : propMat; m.scale.set(b.w, b.h, b.d || b.w); m.position.set(b.x, b.h / 2, -b.z); });
 
+  syncVisual(game.visual);
   renderer.render(scene, camera);
 }
 

@@ -10,7 +10,7 @@ const Aim = { cfg: { fov: 103, sens: .4, targetSize: 1, bg: 'range', guide: true
   audio: { resetStreak() {}, kill() {}, hit() {}, shot() {}, hurt() {} }, crosshair: { draw() {} } };
 const sandbox = { window: { Aim, innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1 }, performance };
 vm.createContext(sandbox);
-for (const file of ['engine.js', 'modes.js', 'valorant.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../js', file), 'utf8'), sandbox);
+for (const file of ['engine.js', 'modes.js', 'mapdata.js', 'valorant.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../js', file), 'utf8'), sandbox);
 const game = () => new Aim.Game({ getContext: () => ctx });
 const blank = (extra) => Object.assign({ setup() {}, update() {}, onKill() {} }, extra);
 const VAL = ['preaim', 'peek', 'jiggle', 'counter', 'burst', 'terrain'];
@@ -123,27 +123,86 @@ test('계단을 오르면 눈 높이가 올라가고, 높이가 다른 적의 �
   }
 });
 
-test('단차 배치의 적 자리는 모두 단상 윗면이나 바닥 위에 있다', () => {
-  for (const L of Aim.valorant.LAYOUTS) for (const s of L.spots) {
-    const under = L.props.filter((p) => Math.abs(s.x - p.x) <= p.w / 2 && Math.abs(s.z - p.z) <= (p.d || p.w) / 2);
-    const top = under.reduce((h, p) => Math.max(h, p.h), 0);
-    assert.equal(top, s.h, L.id + ' ' + JSON.stringify(s));
+const useLayout = (g, L) => { g.solids = L.solids; g.bounds = { x0: L.bounds[0], x1: L.bounds[1] }; g.pos.x = 0; g.vx = 0; g.base = L.base; };
+
+test('맵 데이터는 충돌·적 자리·겉모습을 따로 두고, 대조하지 않은 자리를 대조했다고 표시하지 않는다', () => {
+  assert.ok(Aim.mapData.length >= 8);
+  for (const D of Aim.mapData) {
+    assert.ok(Array.isArray(D.collision.boxes) && D.collision.boxes.length, D.id);
+    assert.ok(D.bots.spots.length >= 2, D.id);
+    assert.equal(D.visual.kind, 'boxes', D.id);
+    assert.equal(D.compared, false, D.id + ' 원작 대조 기록 없이 compared 를 켜지 않는다');
+  }
+  assert.ok(Aim.valorant.LAYOUTS.every((L) => L.compared === false));
+});
+
+test('맵 자리 검증: 거리·높이 — 적 자리는 콜아웃 대표점 6 m 안의 바닥이고, 표시한 거리·높이가 충돌 데이터와 맞는다', () => {
+  for (const L of Aim.valorant.LAYOUTS) {
+    const g = game(); g.reset(blank({ move: true, gun: true })); useLayout(g, L);
+    assert.equal(g.floorAt(0, 0), L.base, L.id + ' 서는 곳');
+    assert.ok(new Set(L.spots.map((s) => s.h).concat(L.base)).size >= 2, L.id + ' 높이 차이가 있어야 한다');
+    for (const s of L.spots) {
+      assert.ok(s.off <= 6, L.id + ' ' + s.name);
+      assert.equal(g.floorAt(s.x, s.z), s.h, L.id + ' ' + s.name + ' 바닥 높이');
+      assert.ok(Math.abs(Math.hypot(s.x, s.z) - s.dist) <= 0.5, L.id + ' ' + s.name + ' 거리');
+      assert.ok(s.z >= 6 && s.z < 46 && Math.abs(s.x) < 34, L.id + ' ' + s.name + ' 훈련장 안');
+    }
   }
 });
 
-test('단차 배치는 실제 맵 콜아웃 좌표에서 만들어지고 거리가 보존된다', () => {
-  const { LAYOUTS, MAP_SPOTS } = Aim.valorant;
-  assert.equal(LAYOUTS.length, MAP_SPOTS.length);
-  MAP_SPOTS.forEach((S, i) => {
-    const L = LAYOUTS[i];
-    assert.ok(L.map && L.from, S.id);
-    assert.ok(Math.abs(L.spots[0].x) < 0.06, S.id + ' 첫 자리는 정면');
-    S.to.forEach((t, j) => {
-      const real = Math.hypot(t[1] - S.from[1], t[2] - S.from[2]) / 100, s = L.spots[j];
-      assert.ok(Math.abs(Math.hypot(s.x, s.z) - real) < 0.15, S.id + ' ' + t[0]);
-      assert.ok(s.z > 5 && Math.abs(s.x) < 34 && s.z < 46, S.id + ' ' + t[0] + ' 훈련장 안');
-    });
-  });
+test('맵 자리 검증: 시야 — 모든 적 자리의 머리가 서는 곳에서 보이고, 벽 뒤는 보이지 않는다', () => {
+  for (const L of Aim.valorant.LAYOUTS) {
+    const g = game(); g.reset(blank({ move: true, gun: true })); useLayout(g, L);
+    for (const s of L.spots) {
+      const t = g.bot(Math.atan2(s.x, s.z) * 180 / Math.PI, 0, s.z); if (s.h) t.lift = s.h;
+      assert.equal(g.seesHead(t), true, L.id + ' ' + s.name);
+      const a = g.targetAngles(t); g.yaw = a.az; g.pitch = a.el;
+      assert.equal(g.hitAt(true).part, 'head', L.id + ' ' + s.name + ' 사격');
+      g.remove(t);
+    }
+    const wall = L.solids.find((b) => b.wall && b.z - b.d / 2 > 3 && Math.abs(b.x) < 20);
+    assert.ok(wall, L.id + ' 앞쪽 벽');
+    assert.equal(g.segmentBlocked(0, g.eyeY, 0, wall.x, 1.6, wall.z + 0.01), true, L.id + ' 벽 안쪽');
+  }
+});
+
+test('맵 자리 검증: 이동 충돌 — 좌우로 달려도 벽이나 높은 단 안으로 들어가지 않는다', () => {
+  const g0 = game(); g0.reset(blank({ move: true, gun: true }));
+  g0.solids = [{ x: 2.5, z: 0, w: 1, d: 2, h: 6, wall: true }, { x: -2.5, z: 0, w: 2, d: 2, h: 0.5 }];
+  g0.keys = { d: true }; step(g0, 2);
+  assert.ok(g0.pos.x > 1.5 && g0.pos.x <= 1.7 + 1e-9, 'wall stop ' + g0.pos.x);
+  g0.bounds = { x0: -3.2, x1: 3.2 }; g0.keys = { a: true }; step(g0, 0.9);
+  assert.ok(g0.pos.x < -1.5 && Math.abs(g0.base - 0.5) < 1e-9, '낮은 단은 올라선다 ' + g0.pos.x + ' ' + g0.base);
+  let blocked = 0;
+  for (const L of Aim.valorant.LAYOUTS) for (const key of ['a', 'd']) {
+    const g = game(); g.reset(blank({ move: true, gun: true })); useLayout(g, L);
+    g.keys = { [key]: true };
+    for (let i = 0; i < 30; i++) {
+      step(g, 0.1);
+      assert.ok(g.floorAt(g.pos.x, 0) - g.base <= 0.6 + 1e-9, L.id + ' ' + key + ' x ' + g.pos.x);
+    }
+    if (Math.abs(g.pos.x) < 3.19) blocked++;
+  }
+  assert.ok(blocked > 0, '실제 자리 중 벽에 막히는 곳이 있다');
+});
+
+test('맵 자리 검증: 사격 차폐 — 상자 뒤 머리는 맞지 않고, 상자를 치우면 맞는다', () => {
+  const g = game(); g.reset(blank({ move: true, gun: true }));
+  const t = g.bot(0, 0, 14), a = g.targetAngles(t);
+  g.yaw = a.az; g.pitch = a.el;
+  assert.equal(g.hitAt(true).part, 'head');
+  g.solids = [{ x: 0, z: 7, w: 2, d: 1, h: 2.2 }];
+  assert.equal(g.hitAt(true), null);
+  assert.equal(g.seesHead(t), false);
+  g.solids = [{ x: 0, z: 7, w: 2, d: 1, h: 1.0 }];   // 낮은 상자 위로는 머리가 보인다
+  assert.equal(g.hitAt(true).part, 'head');
+  g.solids = [{ x: 3, z: 7, w: 2, d: 1, h: 2.2 }];   // 옆으로 비켜난 상자
+  assert.equal(g.hitAt(true).part, 'head');
+  // 실제 자리의 상자: 대표 사이트(헤이븐 A)에서 상자 바로 뒤 바닥의 적은 가려진다
+  const L = Aim.valorant.LAYOUTS.find((v) => v.id === 'haven-a-long');
+  const g2 = game(); g2.reset(blank({ move: true, gun: true })); useLayout(g2, L);
+  const hidden = L.solids.filter((b) => !b.wall && b.h >= 2 && b.z > 6).some((b) => g2.segmentBlocked(0, g2.eyeY, 0, b.x * 1.04, 1.0, (b.z + b.d / 2 + 0.3) * 1.04 ));
+  assert.equal(hidden, true);
 });
 
 test('모든 발로란트 모드가 임의 입력으로 20초 동안 오류 없이 돌아간다', () => {
