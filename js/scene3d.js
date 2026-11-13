@@ -136,6 +136,7 @@ const coverMat = new THREE.MeshStandardMaterial({ color: 0x46586a, roughness: 0.
 const edgeMat = new THREE.MeshBasicMaterial({ color: 0xb4c0c2 });
 const guideMat = new THREE.MeshBasicMaterial({ color: 0xdeb17b });
 const propMat = new THREE.MeshStandardMaterial({ color: 0x9a7d55, roughness: 0.9 });
+const platMat = new THREE.MeshStandardMaterial({ color: 0x7c8992, roughness: 0.95 });   // 단차 모드의 콘크리트 단상·계단
 const unit = new THREE.BoxGeometry(1, 1, 1);
 
 function makeCover() {
@@ -173,7 +174,7 @@ function render(game) {
   camera.aspect = W / H;
   camera.fov = 2 * Math.atan(H / 2 / game.focal) * 180 / Math.PI;
   camera.updateProjectionMatrix();
-  camera.position.set(game.pos.x, game.eyeHeight, -game.pos.z);
+  camera.position.set(game.pos.x, game.eyeHeight + (game.base || 0), -game.pos.z);
   camera.rotation.set(game.pitch * Math.PI / 180, -game.yaw * Math.PI / 180, 0, 'YXZ');
   const dark = A.cfg.bg === 'dark';
   for (const m of roomMats) m.uniforms.gain.value = dark ? 0.5 : 1;
@@ -212,7 +213,7 @@ function render(game) {
   take('cover', covers.length, makeCover);
   covers.forEach((c, i) => setCover(pools.cover[i], c[0], c[1], c[2], c[3], !!A.cfg.guide));
   take('prop', game.props.length, makeProp);
-  game.props.forEach((b, i) => { const m = pools.prop[i]; m.scale.set(b.w, b.h, b.w); m.position.set(b.x, b.h / 2, -b.z); });
+  game.props.forEach((b, i) => { const m = pools.prop[i]; m.material = b.plat ? platMat : propMat; m.scale.set(b.w, b.h, b.d || b.w); m.position.set(b.x, b.h / 2, -b.z); });
 
   renderer.render(scene, camera);
 }

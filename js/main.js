@@ -185,7 +185,7 @@
       ['strafe', 60, '이동 사격'], ['headline', 60, '높이 유지'], ['hold', 90, '각 잡기'], ['reaction', 45, '반응']]) },
     // 실전 루틴: 높이 → 프리에임 → 각 잡기 → 멈추고 쏘기 → 피킹 → 샷 유도 → 발수 조절 (약 9분)
     { key: 'routine-val', icon: '🎯', name: '발로란트 실전 루틴', steps: steps([
-      ['headline', 60, '조준선 높이'], ['preaim', 90, '프리에임'], ['hold', 60, '대기샷'], ['counter', 75, '멈추고 쏘기'],
+      ['headline', 60, '조준선 높이'], ['terrain', 75, '단차 높이'], ['preaim', 90, '프리에임'], ['hold', 60, '대기샷'], ['counter', 75, '멈추고 쏘기'],
       ['peek', 90, '피킹'], ['jiggle', 75, '샷 유도'], ['burst', 75, '발수 조절']]) },
   ];
   let ROUTINE = ROUTINES[0].steps;

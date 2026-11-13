@@ -13,7 +13,7 @@ vm.createContext(sandbox);
 for (const file of ['engine.js', 'modes.js', 'valorant.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../js', file), 'utf8'), sandbox);
 const game = () => new Aim.Game({ getContext: () => ctx });
 const blank = (extra) => Object.assign({ setup() {}, update() {}, onKill() {} }, extra);
-const VAL = ['preaim', 'peek', 'jiggle', 'counter', 'burst'];
+const VAL = ['preaim', 'peek', 'jiggle', 'counter', 'burst', 'terrain'];
 const step = (g, sec, dt = 1 / 240) => { for (let t = 0; t < sec; t += dt) { g.t += dt; g.movePlayer(dt); } };
 
 test('발로란트 모드는 모두 훈련 요령과 근거 자료 링크를 가진다', () => {
@@ -101,6 +101,49 @@ test('코너 뒤 적은 벽 모서리 선 위에 놓인다 (프리에임 원리)
     assert.ok(Math.abs(reveal) <= 1.6 && Math.abs(reveal) >= 0.2, 'reveal ' + reveal);
     assert.equal(g.seenBy(b), false);
   }
+});
+
+test('계단을 오르면 눈 높이가 올라가고, 높이가 다른 적의 머리를 정확히 겨눌 수 있다', () => {
+  const g = game(); g.reset(blank({ move: true, gun: true }));
+  g.ground = Aim.valorant.stairs; g.bounds = { x0: -3.2, x1: 3.2 };
+  g.pos.x = -3.2; g.base = g.ground(-3.2);
+  assert.equal(g.base, 0);
+  g.keys = { d: true }; step(g, 3);
+  assert.ok(Math.abs(g.base - 1.5) < 1e-9, 'base ' + g.base);
+  assert.ok(Math.abs(g.eyeY - 3.1) < 1e-9);
+  g.keys = {}; step(g, 0.5);
+  for (const lift of [0, 1.5, 3]) {
+    const t = g.bot(10, 0, 14); if (lift) t.lift = lift;
+    const a = g.targetAngles(t);
+    assert.equal(Math.sign(Math.round(a.el * 1000)), Math.sign(lift - 1.5));
+    g.yaw = a.az; g.pitch = a.el;
+    assert.equal(g.hitAt(true).t, t);
+    assert.equal(g.hitAt(true).part, 'head');
+    g.remove(t);
+  }
+});
+
+test('단차 배치의 적 자리는 모두 단상 윗면이나 바닥 위에 있다', () => {
+  for (const L of Aim.valorant.LAYOUTS) for (const s of L.spots) {
+    const under = L.props.filter((p) => Math.abs(s.x - p.x) <= p.w / 2 && Math.abs(s.z - p.z) <= (p.d || p.w) / 2);
+    const top = under.reduce((h, p) => Math.max(h, p.h), 0);
+    assert.equal(top, s.h, L.id + ' ' + JSON.stringify(s));
+  }
+});
+
+test('단차 배치는 실제 맵 콜아웃 좌표에서 만들어지고 거리가 보존된다', () => {
+  const { LAYOUTS, MAP_SPOTS } = Aim.valorant;
+  assert.equal(LAYOUTS.length, MAP_SPOTS.length);
+  MAP_SPOTS.forEach((S, i) => {
+    const L = LAYOUTS[i];
+    assert.ok(L.map && L.from, S.id);
+    assert.ok(Math.abs(L.spots[0].x) < 0.06, S.id + ' 첫 자리는 정면');
+    S.to.forEach((t, j) => {
+      const real = Math.hypot(t[1] - S.from[1], t[2] - S.from[2]) / 100, s = L.spots[j];
+      assert.ok(Math.abs(Math.hypot(s.x, s.z) - real) < 0.15, S.id + ' ' + t[0]);
+      assert.ok(s.z > 5 && Math.abs(s.x) < 34 && s.z < 46, S.id + ' ' + t[0] + ' 훈련장 안');
+    });
+  });
 });
 
 test('모든 발로란트 모드가 임의 입력으로 20초 동안 오류 없이 돌아간다', () => {

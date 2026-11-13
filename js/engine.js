@@ -60,6 +60,9 @@
       this.cy = Math.floor(this.H / 2);
     }
 
+    /* 눈 높이 = 키(eyeHeight) + 내가 선 바닥 높이(base). 봇 높이는 eyeHeight 기준 그대로다. */
+    get eyeY() { return this.eyeHeight + (this.base || 0); }
+
     get focal() { return this.W / 2 / Math.tan(rad(A.cfg.fov / 2)); }
 
     look(dx, dy) {
@@ -74,7 +77,7 @@
       x -= this.pos.x; z -= this.pos.z;
       const rx = Math.cos(yaw) * x - Math.sin(yaw) * z;
       const rz = Math.sin(yaw) * x + Math.cos(yaw) * z;
-      const ry = y - this.eyeHeight;
+      const ry = y - this.eyeY;
       return { x: rx, y: Math.cos(pitch) * ry - Math.sin(pitch) * rz,
         z: Math.sin(pitch) * ry + Math.cos(pitch) * rz };
     }
@@ -110,7 +113,7 @@
     /* 기존 모드가 쓰는 각도도 같은 3D 카메라로 투영한다. */
     project(az, el) {
       const p = this.position(az, el, 10);
-      return this.worldPoint(p.x + this.pos.x, p.y, p.z + this.pos.z);
+      return this.worldPoint(p.x + this.pos.x, p.y + (this.base || 0), p.z + this.pos.z);
     }
 
     reset(mode) {
@@ -122,7 +125,7 @@
       this.t = 0; this.cool = 0; this.yaw = 0; this.pitch = 0; this.banner = ''; this.over = false;
       this.kick = 0; this.feed = []; this.pops = []; this.tracers = []; this.reloading = 0;
       this.ammo = Infinity;
-      this.pos = { x: 0, z: 0 }; this.vx = 0; this.covers = []; this.props = []; this.bounds = null;
+      this.pos = { x: 0, z: 0 }; this.vx = 0; this.covers = []; this.props = []; this.bounds = null; this.base = 0; this.ground = null;
       this.impacts = []; this.spray = { n: 0, last: -9, dir: 1 }; this.hurtT = 0; this.lastRun = -9; this.stopAt = -9;
       mode.setup(this);
     }
@@ -142,9 +145,9 @@
     /* 카메라에서 본 타겟(봇은 머리) 중심의 방향과 각 반지름 */
     targetAngles(t) {
       const p = this.targetPosition(t), dx = p.x - this.pos.x, dz = p.z - this.pos.z;
-      const flat = Math.hypot(dx, dz), dist = Math.hypot(flat, p.y - this.eyeHeight);
+      const flat = Math.hypot(dx, dz), dist = Math.hypot(flat, p.y - this.eyeY);
       const size = t.kind === 'orb' ? t.r : 0.1;
-      return { az: Math.atan2(dx, dz) * 180 / Math.PI, el: Math.atan2(p.y - this.eyeHeight, flat) * 180 / Math.PI,
+      return { az: Math.atan2(dx, dz) * 180 / Math.PI, el: Math.atan2(p.y - this.eyeY, flat) * 180 / Math.PI,
         r: Math.atan2(size, dist) * 180 / Math.PI };
     }
 
@@ -230,12 +233,12 @@
     /* 내 눈에서 봇 머리가 보이는지 (edge: 머리 중심에서 좌우로 벗어난 거리 m) */
     seesHead(t, edge = 0) {
       const p = this.targetPosition(t);
-      return !this.segmentBlocked(this.pos.x, this.eyeHeight, this.pos.z, p.x + edge, p.y, p.z);
+      return !this.segmentBlocked(this.pos.x, this.eyeY, this.pos.z, p.x + edge, p.y, p.z);
     }
     /* 봇이 내 몸을 볼 수 있는지. 어깨(몸 폭 0.25m)는 눈보다 먼저 드러난다. */
     seenBy(t) {
       const p = this.targetPosition(t);
-      for (const dx of [-0.25, 0, 0.25]) if (!this.segmentBlocked(p.x, p.y, p.z, this.pos.x + dx, 1.35, this.pos.z)) return true;
+      for (const dx of [-0.25, 0, 0.25]) if (!this.segmentBlocked(p.x, p.y, p.z, this.pos.x + dx, 1.35 + (this.base || 0), this.pos.z)) return true;
       return false;
     }
 
@@ -253,6 +256,8 @@
       const b = this.bounds;
       if (b && (x < b.x0 || x > b.x1)) { x = Math.max(b.x0, Math.min(b.x1, x)); this.vx = 0; }
       this.pos.x = x;
+      // 계단·경사: 바닥 높이를 따라 눈 높이가 부드럽게 오르내린다
+      if (this.ground) { const goal = this.ground(x), step = 6 * dt; this.base = Math.abs(goal - this.base) <= step ? goal : this.base + Math.sign(goal - this.base) * step; }
       const now = this.speedPct();
       if (now >= 0.8) this.lastRun = this.t;
       if (was > MOVE.dead && now <= MOVE.dead) this.stopAt = this.t;
@@ -298,7 +303,7 @@
         const dz = c.z - this.pos.z;
         if (dz <= 0 || tz <= c.z) continue;
         const distance = dz / forward, x = this.pos.x + Math.sin(yaw) * Math.cos(pitch) * distance;
-        const y = this.eyeHeight + Math.sin(pitch) * distance;
+        const y = this.eyeY + Math.sin(pitch) * distance;
         if (x >= c.x0 && x <= c.x1 && y >= 0 && y <= c.h) return true;
       }
       return false;
@@ -651,19 +656,20 @@
       }
     }
 
-    /* 봇이 올라서는 상자 { x, z, w, h } */
+    /* 봇이 올라서는 상자·단상 { x, z, w, h, d(앞뒤 길이, 없으면 w), plat(콘크리트 단상) } */
     drawProp(b) {
-      const x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z - b.w / 2, z1 = b.z + b.w / 2, h = b.h;
-      for (const x of [x0, x1]) this.polygon([[x,0,z0],[x,0,z1],[x,h,z1],[x,h,z0]], '#6f5a41', '#3d3226');
-      this.polygon([[x0,h,z0],[x1,h,z0],[x1,h,z1],[x0,h,z1]], '#a8895f', '#3d3226');
-      this.polygon([[x0,0,z0],[x1,0,z0],[x1,h,z0],[x0,h,z0]], '#8d7350', '#3d3226');
+      const dd = b.d || b.w, x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z - dd / 2, z1 = b.z + dd / 2, h = b.h;
+      const c = b.plat ? ['#56636d', '#8d9aa3', '#6d7a84', '#2f3a42'] : ['#6f5a41', '#a8895f', '#8d7350', '#3d3226'];
+      for (const x of [x0, x1]) this.polygon([[x,0,z0],[x,0,z1],[x,h,z1],[x,h,z0]], c[0], c[3]);
+      if (h < this.eyeY) this.polygon([[x0,h,z0],[x1,h,z0],[x1,h,z1],[x0,h,z1]], c[1], c[3]);
+      this.polygon([[x0,0,z0],[x1,0,z0],[x1,h,z0],[x0,h,z0]], c[2], c[3]);
     }
 
     drawWorld() {
       this.background();
       if (A.cfg.bg !== 'grid') for (const t of this.targets) if (t.vis && !t.lift) this.drawShadow(t);
       const items = this.targets.filter((t) => t.vis).map((t) => ({ z: this.targetPosition(t).z, t }))
-        .concat(this.covers.map((c) => ({ z: c.z, c })), this.props.map((b) => ({ z: b.z + 0.01, b })));
+        .concat(this.covers.map((c) => ({ z: c.z, c })), this.props.map((b) => ({ z: b.z + (b.d ? b.d / 2 : 0) + 0.01, b })));
       if (this.wall) items.push({ z: this.wall.d, wall: true });
       items.sort((a, b) => b.z - a.z);
       for (const it of items) {
